@@ -12,6 +12,7 @@ PostgreSQL extension for probabilistic SQL queries.
 2. `cmake ..`
 3. `cmake --build .`
 4. `sudo cmake --install .`
+5. To run tests, run `cd build && ctest .`
 
 ## Credits
 @mkindahl for the `pg_extension` project.
