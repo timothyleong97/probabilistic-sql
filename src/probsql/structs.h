@@ -1,11 +1,38 @@
 #ifndef STRUCT_H
 #define STRUCT_H
 #include "enums.h"
+/************************************************
+ * Parameters for distributions
+ ************************************************/
+typedef struct
+{
+    double mean;
+    double stddev;
+} gaussian_parameters;
+
+typedef struct
+{
+    double lambda;
+} poisson_parameters;
+
+typedef union
+{
+    gaussian_parameters gaussian_parameters;
+    poisson_parameters poisson_parameters;
+} base_variable_parameters;
+/************************************************
+ * Types of gates
+ ************************************************/
 
 // Represents a base distribution.
 typedef struct
 {
+    // What type of distribution this base_var has
+    distribution_type distribution_type;
 
+    // The parameters for this base variable,
+    // depending on what type of distribution it has.
+    base_variable_parameters base_variable_parameters;
 } base_variable;
 
 // Represents a composition of distributions.
@@ -33,5 +60,5 @@ typedef union
 
     // The information corresponding to a condition.
     condition condition;
-} package;
+} gate_info;
 #endif

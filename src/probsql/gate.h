@@ -10,7 +10,7 @@ typedef struct
 
     // The information pertaining to this gate,
     // depending on what gate type it has.
-    package package;
+    gate_info gate_info;
 } Gate;
 
 #endif
