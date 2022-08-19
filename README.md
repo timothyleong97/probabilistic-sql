@@ -15,4 +15,5 @@ PostgreSQL extension for probabilistic SQL queries.
 5. To run tests, run `cd build && ctest .`
 
 ## Credits
-@mkindahl for the `pg_extension` project.
+@mkindahl for the `pg_extension` project,
+@maxim2266 for the `str` library.

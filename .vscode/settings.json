@@ -1,5 +1,9 @@
 {
     "files.associations": {
-        "postgres.h": "c"
-    }
+        "postgres.h": "c",
+        "random": "cpp",
+        "stringify.h": "c",
+        "structs.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "Disabled"
 }

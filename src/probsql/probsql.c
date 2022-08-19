@@ -1,4 +1,5 @@
 #include "probsql.h"
+#include "stringify.h"
 
 #include <postgres.h>
 #include <fmgr.h>
