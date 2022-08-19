@@ -18,7 +18,6 @@ char *stringify_base_variable(base_variable *base_variable)
 {
     switch (base_variable->distribution_type)
     {
-
     case GAUSSIAN:
     {
         gaussian_parameters params = base_variable->base_variable_parameters.gaussian_parameters;
@@ -32,6 +31,25 @@ char *stringify_base_variable(base_variable *base_variable)
     default:
         return "UNRECOGNISED_BASE_VARIABLE";
     }
+}
+
+char *combine_operands_and_operator(char *stringified_left, char *opr, char *stringified_right)
+{
+    const int length_of_left_side = strlen(stringified_left);
+    const int length_of_opr = strlen(opr);
+    const int length_of_right_side = strlen(stringified_right);
+    const int length = length_of_left_side +
+                       strlen(opr) +
+                       length_of_right_side;
+
+    char *arr = (char *)palloc(length + 1); // + 1 for the null terminator
+
+    memcpy((void *)arr, (void *)stringified_left, length_of_left_side);
+    memcpy((void *)arr + length_of_left_side, (void *)opr, length_of_opr);
+    memcpy((void *)arr + length_of_left_side + length_of_opr, (void *)stringified_right, length_of_right_side);
+    arr[length] = '\0';
+
+    return arr;
 }
 
 char *stringify_condition(condition *condition)
@@ -69,27 +87,34 @@ char *stringify_condition(condition *condition)
      */
     char *stringified_left = _stringify_gate(condition->left_gate);
     char *stringified_right = _stringify_gate(condition->right_gate);
-
-    // Calculate the length of the final string to return
-    const int length_of_left_side = strlen(stringified_left);
-    const int length_of_opr = strlen(opr);
-    const int length_of_right_side = strlen(stringified_right);
-    const int length = length_of_left_side +
-                       strlen(opr) +
-                       length_of_right_side;
-
-    char *arr = (char *)palloc(length + 1); // + 1 for the null terminator
-
-    memcpy((void *)arr, (void *)stringified_left, length_of_left_side);
-    memcpy((void *)arr + length_of_left_side, (void *)opr, length_of_opr);
-    memcpy((void *)arr + length_of_left_side + length_of_opr, (void *)stringified_right, length_of_right_side);
-    arr[length] = '\0';
-
-    return arr;
+    return combine_operands_and_operator(stringified_left, opr, stringified_right);
 }
 
 char *stringify_composite_variable(comp_variable *comp_variable)
 {
+    char *opr;
+    switch (comp_variable->opr)
+    {
+    case PLUS:
+        opr = "+";
+        break;
+    case MINUS:
+        opr = "-";
+        break;
+    case TIMES:
+        opr = "*";
+        break;
+    case DIVIDE:
+        opr = "/";
+        break;
+    }
+
+    /**
+     *  A composite variable takes the following form: <left gate> <opr> <right_gate>
+     */
+    char *stringified_left = _stringify_gate(comp_variable->left_gate);
+    char *stringified_right = _stringify_gate(comp_variable->right_gate);
+    return combine_operands_and_operator(stringified_left, opr, stringified_right);
 }
 
 char *_stringify_gate(Gate *gate)
@@ -108,18 +133,4 @@ char *_stringify_gate(Gate *gate)
         return "UNRECOGNISED_GATE";
     }
 }
-
-// Returns the textual representation of a gate.
-PG_FUNCTION_INFO_V1(stringify_gate);
-Datum stringify_gate(PG_FUNCTION_ARGS)
-{
-    // Pull out the gate from the arguments
-    Gate *gate = (Gate *)PG_GETARG_POINTER(0);
-
-    // Use the helper
-    char *result = _stringify_gate(gate);
-
-    PG_RETURN_CSTRING(result);
-}
-
 #endif

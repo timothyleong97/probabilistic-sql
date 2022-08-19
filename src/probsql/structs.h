@@ -47,7 +47,10 @@ typedef struct
 {
     // Whether this composition is a +-*/
     probabilistic_composition opr;
-
+    // The left operand in this condition, e.g. x in x + y.
+    struct Gate *left_gate;
+    // The right operand in this condition, e.g. y in x - y.
+    struct Gate *right_gate;
 } comp_variable;
 
 // Represents a boolean condition.
