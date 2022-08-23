@@ -21,12 +21,12 @@ char *stringify_base_variable(base_variable *base_variable)
     case GAUSSIAN:
     {
         gaussian_parameters params = base_variable->base_variable_parameters.gaussian_parameters;
-        return psprintf("NORMAL(%.2f, %.2f)", params.mean, params.stddev);
+        return psprintf("gaussian(%.2f, %.2f)", params.mean, params.stddev);
     }
     case POISSON:
     {
         poisson_parameters params = base_variable->base_variable_parameters.poisson_parameters;
-        return psprintf("POISSON(%.2f)", params.lambda);
+        return psprintf("poisson(%.2f)", params.lambda);
     }
     default:
         return "UNRECOGNISED_BASE_VARIABLE";
@@ -107,6 +107,8 @@ char *stringify_composite_variable(comp_variable *comp_variable)
     case DIVIDE:
         opr = "/";
         break;
+    default:
+        opr = "UNKNOWN OPR";
     }
 
     /**

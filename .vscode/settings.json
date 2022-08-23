@@ -3,7 +3,8 @@
         "postgres.h": "c",
         "random": "cpp",
         "stringify.h": "c",
-        "structs.h": "c"
+        "structs.h": "c",
+        "functional": "cpp"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }
