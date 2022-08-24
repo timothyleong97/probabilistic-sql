@@ -38,13 +38,14 @@ Gate *new_poisson(double lambda)
 }
 
 /**
- * @brief Adds two probabilistic variables, i.e. X + Y.
+ * @brief Performs some arithmetic operation on two gates
  *
  * @param gate1 The first probability gate
  * @param gate2 The second probability gate
- * @return Gate* The gate referring to both of them
+ * @param opr The operator to apply
+ * @return Gate* The new gate
  */
-Gate *add(Gate *gate1, Gate *gate2)
+Gate *combine_prob_gates(Gate *gate1, Gate *gate2, probabilistic_composition opr)
 {
     // Check that both gates represent probability variables.
     if (gate1->gate_type == CONDITION || gate2->gate_type == CONDITION)
@@ -57,7 +58,7 @@ Gate *add(Gate *gate1, Gate *gate2)
     // Create the result gate
     Gate *result = (Gate *)palloc(sizeof(Gate));
     result->gate_type = COMPOSITE_VARIABLE;
-    result->gate_info.comp_variable.opr = PLUS;
+    result->gate_info.comp_variable.opr = opr;
     result->gate_info.comp_variable.left_gate = gate1;
     result->gate_info.comp_variable.right_gate = gate2;
 

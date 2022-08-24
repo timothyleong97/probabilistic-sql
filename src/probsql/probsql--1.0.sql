@@ -29,8 +29,38 @@ CREATE FUNCTION add_prob_var(gate, gate)
 CREATE OPERATOR + (
     leftarg = gate,
     rightarg = gate,
-    function = add_prob_var,
-    commutator = +
+    function = add_prob_var
 );
 
+CREATE FUNCTION sub_prob_var(gate, gate)
+    RETURNS gate
+    AS 'MODULE_PATHNAME', 'sub_prob_var'
+    LANGUAGE C IMMUTABLE STRICT;
 
+CREATE OPERATOR - (
+    leftarg = gate,
+    rightarg = gate,
+    function = sub_prob_var
+);
+
+CREATE FUNCTION times_prob_var(gate, gate)
+    RETURNS gate
+    AS 'MODULE_PATHNAME', 'times_prob_var'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR * (
+    leftarg = gate,
+    rightarg = gate,
+    function = times_prob_var
+);
+
+CREATE FUNCTION div_prob_var(gate, gate)
+    RETURNS gate
+    AS 'MODULE_PATHNAME', 'div_prob_var'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR / (
+    leftarg = gate,
+    rightarg = gate,
+    function = div_prob_var
+);

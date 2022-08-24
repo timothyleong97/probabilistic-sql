@@ -71,6 +71,45 @@ Datum add_prob_var(PG_FUNCTION_ARGS)
     Gate *second_operand = (Gate *)PG_GETARG_POINTER(1);
 
     // Return result
-    Gate *new_gate = add(first_operand, second_operand);
+    Gate *new_gate = combine_prob_gates(first_operand, second_operand, PLUS);
+    PG_RETURN_POINTER(new_gate);
+}
+
+// Performs subtraction between two gates representing probability variables.
+PG_FUNCTION_INFO_V1(sub_prob_var);
+Datum sub_prob_var(PG_FUNCTION_ARGS)
+{
+    // Read in arguments
+    Gate *first_operand = (Gate *)PG_GETARG_POINTER(0);
+    Gate *second_operand = (Gate *)PG_GETARG_POINTER(1);
+
+    // Return result
+    Gate *new_gate = combine_prob_gates(first_operand, second_operand, MINUS);
+    PG_RETURN_POINTER(new_gate);
+}
+
+// Performs multiplication between two gates representing probability variables.
+PG_FUNCTION_INFO_V1(times_prob_var);
+Datum times_prob_var(PG_FUNCTION_ARGS)
+{
+    // Read in arguments
+    Gate *first_operand = (Gate *)PG_GETARG_POINTER(0);
+    Gate *second_operand = (Gate *)PG_GETARG_POINTER(1);
+
+    // Return result
+    Gate *new_gate = combine_prob_gates(first_operand, second_operand, TIMES);
+    PG_RETURN_POINTER(new_gate);
+}
+
+// Performs division between two gates representing probability variables.
+PG_FUNCTION_INFO_V1(div_prob_var);
+Datum div_prob_var(PG_FUNCTION_ARGS)
+{
+    // Read in arguments
+    Gate *first_operand = (Gate *)PG_GETARG_POINTER(0);
+    Gate *second_operand = (Gate *)PG_GETARG_POINTER(1);
+
+    // Return result
+    Gate *new_gate = combine_prob_gates(first_operand, second_operand, DIVIDE);
     PG_RETURN_POINTER(new_gate);
 }
