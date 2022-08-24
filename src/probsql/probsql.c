@@ -13,10 +13,10 @@
 PG_MODULE_MAGIC;
 
 /*******************************
- * Methods for gate operations
+ * Gate I/O
  ******************************/
 
-// Returns the textual representation of a gate.
+// Returns the textual representation of any gate.
 PG_FUNCTION_INFO_V1(stringify_gate);
 Datum stringify_gate(PG_FUNCTION_ARGS)
 {
@@ -29,9 +29,9 @@ Datum stringify_gate(PG_FUNCTION_ARGS)
     PG_RETURN_CSTRING(result);
 }
 
-// Creates a base variable gate.
-PG_FUNCTION_INFO_V1(base_var);
-Datum base_var(PG_FUNCTION_ARGS)
+// Creates a gate.
+PG_FUNCTION_INFO_V1(new_gate);
+Datum new_gate(PG_FUNCTION_ARGS)
 {
     // Pull out the distribution and parameters
     char *literal = PG_GETARG_CSTRING(0);
@@ -40,14 +40,14 @@ Datum base_var(PG_FUNCTION_ARGS)
     double x, y;
 
     // See if the distribution matches any of the ones we can recognise
-    if (sscanf(literal, "gaussian(%f, %f)", &x, &y) == 2)
+    if (sscanf(literal, "gaussian(%lf, %lf)", &x, &y) == 2)
     {
         Gate *gate = new_gaussian(x, y);
         PG_RETURN_POINTER(gate);
     }
-    else if (sscanf(literal, "poisson(%f)", &x) == 1)
+    else if (sscanf(literal, "poisson(%lf)", &x) == 1)
     {
-        Gate *gate = new_possion(x);
+        Gate *gate = new_poisson(x);
         PG_RETURN_POINTER(gate);
     }
     else
@@ -55,6 +55,6 @@ Datum base_var(PG_FUNCTION_ARGS)
         // Catchall for unrecognised literals
         ereport(ERROR,
                 errcode(ERRCODE_CASE_NOT_FOUND),
-                errmsg("Cannot recognise the type of base variable"));
+                errmsg("Cannot recognise the type of gate"));
     }
 }

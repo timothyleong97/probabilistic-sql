@@ -4,7 +4,10 @@
         "random": "cpp",
         "stringify.h": "c",
         "structs.h": "c",
-        "functional": "cpp"
+        "functional": "cpp",
+        "regex.h": "c",
+        "gate.h": "c",
+        "enums.h": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }

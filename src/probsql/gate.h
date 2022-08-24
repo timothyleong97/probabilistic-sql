@@ -14,11 +14,14 @@
  */
 Gate *new_gaussian(double mean, double stddev)
 {
+    printf("Gate size: %lu", sizeof(Gate));
     Gate *result = (Gate *)palloc(sizeof(Gate));
     result->gate_type = BASE_VARIABLE;
     result->gate_info.base_variable.distribution_type = GAUSSIAN;
-    result->gate_info.base_variable.base_variable_parameters.gaussian_parameters.mean = mean;
-    result->gate_info.base_variable.base_variable_parameters.gaussian_parameters.stddev = stddev;
+    // result->gate_info.base_variable.base_variable_parameters.gaussian_parameters.mean = mean;
+    // result->gate_info.base_variable.base_variable_parameters.gaussian_parameters.stddev = stddev;
+    gaussian_parameters params = {mean, stddev};
+    result->gate_info.base_variable.base_variable_parameters.gaussian_parameters = params;
     return result;
 }
 

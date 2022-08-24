@@ -16,4 +16,3 @@ PostgreSQL extension for probabilistic SQL queries.
 
 ## Credits
 @mkindahl for the `pg_extension` project,
-@maxim2266 for the `str` library.
