@@ -17,8 +17,8 @@ PG_MODULE_MAGIC;
  ******************************/
 
 // Returns the textual representation of any gate.
-PG_FUNCTION_INFO_V1(stringify_gate);
-Datum stringify_gate(PG_FUNCTION_ARGS)
+PG_FUNCTION_INFO_V1(gate_out);
+Datum gate_out(PG_FUNCTION_ARGS)
 {
     // Pull out the gate from the arguments
     Gate *gate = (Gate *)PG_GETARG_POINTER(0);
@@ -30,8 +30,8 @@ Datum stringify_gate(PG_FUNCTION_ARGS)
 }
 
 // Creates a gate.
-PG_FUNCTION_INFO_V1(new_gate);
-Datum new_gate(PG_FUNCTION_ARGS)
+PG_FUNCTION_INFO_V1(gate_in);
+Datum gate_in(PG_FUNCTION_ARGS)
 {
     // Pull out the distribution and parameters
     char *literal = PG_GETARG_CSTRING(0);
