@@ -7,3 +7,9 @@ SELECT * FROM test;
   2 | poisson(3.00)
 (2 rows)
 
+SELECT 'gaussian(1.0, 2.0)'::gate + 'poisson(3.0)'::gate AS comp_var;
+                comp_var                
+----------------------------------------
+ (gaussian(1.00, 2.00))+(poisson(3.00))
+(1 row)
+

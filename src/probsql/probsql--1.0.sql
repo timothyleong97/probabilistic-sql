@@ -19,3 +19,18 @@ CREATE TYPE gate (
     input = gate_in,
     output = gate_out
 );
+
+-- Define functions for the now-defined gate
+CREATE FUNCTION add_prob_var(gate, gate)
+    RETURNS gate
+    AS 'MODULE_PATHNAME', 'add_prob_var'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR + (
+    leftarg = gate,
+    rightarg = gate,
+    function = add_prob_var,
+    commutator = +
+);
+
+

@@ -58,3 +58,19 @@ Datum gate_in(PG_FUNCTION_ARGS)
                 errmsg("Cannot recognise the type of gate"));
     }
 }
+
+/*******************************
+ * Gate Composition
+ ******************************/
+// Adds two gates representing probability variables.
+PG_FUNCTION_INFO_V1(add_prob_var);
+Datum add_prob_var(PG_FUNCTION_ARGS)
+{
+    // Read in arguments
+    Gate *first_operand = (Gate *)PG_GETARG_POINTER(0);
+    Gate *second_operand = (Gate *)PG_GETARG_POINTER(1);
+
+    // Return result
+    Gate *new_gate = add(first_operand, second_operand);
+    PG_RETURN_POINTER(new_gate);
+}

@@ -33,20 +33,27 @@ char *stringify_base_variable(base_variable *base_variable)
     }
 }
 
+// Returns (stringified_left)[ opr ](stringified_right)
 char *combine_operands_and_operator(char *stringified_left, char *opr, char *stringified_right)
 {
     const int length_of_left_side = strlen(stringified_left);
     const int length_of_opr = strlen(opr);
     const int length_of_right_side = strlen(stringified_right);
     const int length = length_of_left_side +
-                       strlen(opr) +
-                       length_of_right_side;
+                       length_of_opr +
+                       length_of_right_side + 4; // + 4 for the brackets
 
     char *arr = (char *)palloc(length + 1); // + 1 for the null terminator
 
-    memcpy((void *)arr, (void *)stringified_left, length_of_left_side);
-    memcpy((void *)arr + length_of_left_side, (void *)opr, length_of_opr);
-    memcpy((void *)arr + length_of_left_side + length_of_opr, (void *)stringified_right, length_of_right_side);
+    arr[0] = '(';
+    memcpy((void *)arr + 1, (void *)stringified_left, length_of_left_side);
+    arr[length_of_left_side + 1] = ')';
+
+    memcpy((void *)arr + length_of_left_side + 2, (void *)opr, length_of_opr);
+
+    arr[length_of_left_side + 2 + length_of_opr] = '(';
+    memcpy((void *)arr + length_of_left_side + 3 + length_of_opr, (void *)stringified_right, length_of_right_side);
+    arr[length - 1] = ')';
     arr[length] = '\0';
 
     return arr;
