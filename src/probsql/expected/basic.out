@@ -61,3 +61,15 @@ SELECT 'gaussian(1.0, 2.0)'::gate <> 2 AS my_cond;
  (gaussian(1.00, 2.00))!=(gaussian(2.00, 0.00))
 (1 row)
 
+SELECT ('gaussian(1.0, 2.0)'::gate <> 2) && ('gaussian(1.0, 2.0)'::gate < 'poisson(3.0)'::gate) AS my_cond;
+                                          my_cond                                           
+--------------------------------------------------------------------------------------------
+ ((gaussian(1.00, 2.00))!=(gaussian(2.00, 0.00)))&&((gaussian(1.00, 2.00))<(poisson(3.00)))
+(1 row)
+
+SELECT !('gaussian(1.0, 2.0)'::gate <> 2) AS my_cond;
+                    my_cond                     
+------------------------------------------------
+ (gaussian(1.00, 2.00))==(gaussian(2.00, 0.00))
+(1 row)
+

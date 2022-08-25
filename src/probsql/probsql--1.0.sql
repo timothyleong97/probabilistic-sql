@@ -172,3 +172,44 @@ CREATE OPERATOR != (
     rightarg = gate,
     function = not_equal_to
 );
+
+CREATE FUNCTION combine_condition(gate, gate, cstring)
+    RETURNS gate
+    AS 'MODULE_PATHNAME', 'combine_condition'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION and_gate(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT combine_condition(g1, g2, 'AND')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR && (
+    leftarg = gate,
+    rightarg = gate,
+    function = and_gate
+);
+
+CREATE FUNCTION or_gate(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT combine_condition(g1, g2, 'OR')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR || (
+    leftarg = gate,
+    rightarg = gate,
+    function = or_gate
+);
+
+CREATE FUNCTION negate_condition(gate)
+    RETURNS gate 
+    AS 'MODULE_PATHNAME', 'negate_condition_gate'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR ! (
+    rightarg = gate,
+    function = negate_condition
+);

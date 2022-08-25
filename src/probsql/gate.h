@@ -147,4 +147,69 @@ Gate *combine_two_conditions(Gate *gate1, Gate *gate2, condition_type opr)
 
     return result;
 }
+
+/**
+ * @brief Switch the condition type of a condition.
+ *
+ * @param gate The gate whose condition is to be negated.
+ * @return Gate* The same gate but with a different condition
+ */
+Gate *negate_condition(Gate *gate)
+{
+    // Check that this gate is a condition gate
+    if (gate->gate_type != CONDITION)
+    {
+        ereport(ERROR,
+                errcode(ERRCODE_WRONG_OBJECT_TYPE),
+                errmsg("Detected prob gate instead of condition gate"));
+    }
+
+    if (gate->gate_info.condition.condition_type == LESS_THAN_OR_EQUAL)
+    {
+        gate->gate_info.condition.condition_type = MORE_THAN;
+    }
+    else if (gate->gate_info.condition.condition_type == LESS_THAN)
+    {
+        gate->gate_info.condition.condition_type = MORE_THAN_OR_EQUAL;
+    }
+    else if (gate->gate_info.condition.condition_type == MORE_THAN_OR_EQUAL)
+    {
+        gate->gate_info.condition.condition_type = LESS_THAN;
+    }
+    else if (gate->gate_info.condition.condition_type == MORE_THAN)
+    {
+        gate->gate_info.condition.condition_type = LESS_THAN_OR_EQUAL;
+    }
+    else if (gate->gate_info.condition.condition_type == EQUAL_TO)
+    {
+        gate->gate_info.condition.condition_type = NOT_EQUAL_TO;
+    }
+    else if (gate->gate_info.condition.condition_type == NOT_EQUAL_TO)
+    {
+        gate->gate_info.condition.condition_type = EQUAL_TO;
+    }
+    else if (gate->gate_info.condition.condition_type == AND)
+    {
+        // By DeMorgan's law, !(A && B) = !A || !B
+        gate->gate_info.condition.condition_type = OR;
+        gate->gate_info.condition.left_gate = negate_condition(gate->gate_info.condition.left_gate);
+        gate->gate_info.condition.right_gate = negate_condition(gate->gate_info.condition.right_gate);
+    }
+    else if (gate->gate_info.condition.condition_type == OR)
+    {
+        // By DeMorgan's law, !(A || B) = !A && !B
+        gate->gate_info.condition.condition_type = AND;
+        gate->gate_info.condition.left_gate = negate_condition(gate->gate_info.condition.left_gate);
+        gate->gate_info.condition.right_gate = negate_condition(gate->gate_info.condition.right_gate);
+    }
+    else 
+    {
+        // Catchall for unrecognised condition types
+        ereport(ERROR,
+                errcode(ERRCODE_WRONG_OBJECT_TYPE),
+                errmsg("Unrecognised condition type"));
+    }
+
+    return gate;
+}
 #endif

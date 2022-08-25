@@ -109,52 +109,6 @@ Datum arithmetic_var(PG_FUNCTION_ARGS)
 }
 
 
-// PG_FUNCTION_INFO_V1(create_condition_from_var_and_const);
-// Datum create_condition_from_var_and_const(PG_FUNCTION_ARGS)
-// {
-//     // Read in arguments
-//     Gate *first_gate = (Gate *)PG_GETARG_POINTER(0);
-//     double number = PG_GETARG_FLOAT8(1);
-//     char *comparator = PG_GETARG_CSTRING(2);
-
-//     // Determine the type of comparator
-//     condition_type cond;
-//     if (strcmp(comparator, "LESS_THAN_OR_EQUAL") == 0)
-//     {
-//         cond = LESS_THAN_OR_EQUAL;
-//     }
-//     else if (strcmp(comparator, "LESS_THAN") == 0)
-//     {
-//         cond = LESS_THAN;
-//     }
-//     else if (strcmp(comparator, "MORE_THAN_OR_EQUAL") == 0)
-//     {
-//         cond = MORE_THAN_OR_EQUAL;
-//     }
-//     else if (strcmp(comparator, "MORE_THAN") == 0)
-//     {
-//         cond = MORE_THAN;
-//     }
-//     else if (strcmp(comparator, "EQUAL_TO") == 0)
-//     {
-//         cond = EQUAL_TO;
-//     }
-//     else
-//     {
-//         // Catchall for unrecognised comparator codes
-//         ereport(ERROR,
-//                 errcode(ERRCODE_CASE_NOT_FOUND),
-//                 errmsg("Cannot recognise the type of comparator"));
-//     }
-
-//     // Create a gate for the constant
-//     Gate *gate_for_constant = constant(number);
-
-//     // Return result
-//     Gate *new_gate = create_condition_from_prob_gates(first_gate, gate_for_constant, cond);
-//     PG_RETURN_POINTER(new_gate);
-// }
-
 PG_FUNCTION_INFO_V1(create_condition_from_var_and_var);
 Datum create_condition_from_var_and_var(PG_FUNCTION_ARGS)
 {
@@ -202,26 +156,43 @@ Datum create_condition_from_var_and_var(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(new_gate);
 }
 
-// PG_FUNCTION_INFO_V1(and_condition);
-// Datum and_condition(PG_FUNCTION_ARGS)
-// {
-//     // Read in arguments
-//     Gate *first_gate = (Gate *)PG_GETARG_POINTER(0);
-//     Gate *second_gate = (Gate *)PG_GETARG_POINTER(1);
+PG_FUNCTION_INFO_V1(combine_condition);
+Datum combine_condition(PG_FUNCTION_ARGS)
+{
+    // Read in arguments
+    Gate *first_gate = (Gate *)PG_GETARG_POINTER(0);
+    Gate *second_gate = (Gate *)PG_GETARG_POINTER(1);
+    char *combiner = PG_GETARG_CSTRING(2);
 
-//     // Return result
-//     Gate *new_gate = combine_two_conditions(first_gate, second_gate, AND);
-//     PG_RETURN_POINTER(new_gate);
-// }
+    // Determine the combiner in use
+    condition_type cond;
+    if (strcmp(combiner, "AND") == 0) 
+    {
+        cond = AND;
+    }
+    else if (strcmp(combiner, "OR") == 0)
+    {
+        cond = OR;
+    }
+    else
+    {
+        // Catchall for unrecognised comparator codes
+        ereport(ERROR,
+                errcode(ERRCODE_CASE_NOT_FOUND),
+                errmsg("Cannot recognise the type of combiner"));
+    }
+    // Return result
+    Gate *new_gate = combine_two_conditions(first_gate, second_gate, AND);
+    PG_RETURN_POINTER(new_gate);
+}
 
-// PG_FUNCTION_INFO_V1(or_condition);
-// Datum or_condition(PG_FUNCTION_ARGS)
-// {
-//     // Read in arguments
-//     Gate *first_gate = (Gate *)PG_GETARG_POINTER(0);
-//     Gate *second_gate = (Gate *)PG_GETARG_POINTER(1);
+PG_FUNCTION_INFO_V1(negate_condition_gate);
+Datum negate_condition_gate(PG_FUNCTION_ARGS)
+{
+    // Read in argument
+    Gate *gate = (Gate *)PG_GETARG_POINTER(0);
 
-//     // Return result
-//     Gate *new_gate = combine_two_conditions(first_gate, second_gate, OR);
-//     PG_RETURN_POINTER(new_gate);
-// }
+    // Perform negation
+    gate = negate_condition(gate);
+    PG_RETURN_POINTER(gate);
+}
