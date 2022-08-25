@@ -31,3 +31,9 @@ SELECT 'gaussian(1.0, 2.0)'::gate / 'poisson(3.0)'::gate AS comp_var;
  (gaussian(1.00, 2.00))/(poisson(3.00))
 (1 row)
 
+SELECT 2::gate AS const_var;
+      const_var       
+----------------------
+ gaussian(2.00, 0.00)
+(1 row)
+

@@ -5,3 +5,4 @@ SELECT 'gaussian(1.0, 2.0)'::gate + 'poisson(3.0)'::gate AS comp_var;
 SELECT 'gaussian(1.0, 2.0)'::gate - 'poisson(3.0)'::gate AS comp_var;
 SELECT 'gaussian(1.0, 2.0)'::gate * 'poisson(3.0)'::gate AS comp_var;
 SELECT 'gaussian(1.0, 2.0)'::gate / 'poisson(3.0)'::gate AS comp_var;
+SELECT 2::gate AS const_var;

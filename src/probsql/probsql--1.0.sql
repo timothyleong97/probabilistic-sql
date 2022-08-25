@@ -21,10 +21,17 @@ CREATE TYPE gate (
 );
 
 -- Define functions for the now-defined gate
-CREATE FUNCTION add_prob_var(gate, gate)
+CREATE FUNCTION arithmetic_var(gate, gate, cstring)
     RETURNS gate
-    AS 'MODULE_PATHNAME', 'add_prob_var'
+    AS 'MODULE_PATHNAME', 'arithmetic_var'
     LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION add_prob_var(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT arithmetic_var(g1, g2, 'PLUS')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE OPERATOR + (
     leftarg = gate,
@@ -32,10 +39,12 @@ CREATE OPERATOR + (
     function = add_prob_var
 );
 
-CREATE FUNCTION sub_prob_var(gate, gate)
-    RETURNS gate
-    AS 'MODULE_PATHNAME', 'sub_prob_var'
-    LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION sub_prob_var(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT arithmetic_var(g1, g2, 'MINUS')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE OPERATOR - (
     leftarg = gate,
@@ -43,10 +52,12 @@ CREATE OPERATOR - (
     function = sub_prob_var
 );
 
-CREATE FUNCTION times_prob_var(gate, gate)
-    RETURNS gate
-    AS 'MODULE_PATHNAME', 'times_prob_var'
-    LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION times_prob_var(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT arithmetic_var(g1, g2, 'TIMES')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE OPERATOR * (
     leftarg = gate,
@@ -54,13 +65,24 @@ CREATE OPERATOR * (
     function = times_prob_var
 );
 
-CREATE FUNCTION div_prob_var(gate, gate)
-    RETURNS gate
-    AS 'MODULE_PATHNAME', 'div_prob_var'
-    LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION div_prob_var(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT arithmetic_var(g1, g2, 'DIVIDE')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE OPERATOR / (
     leftarg = gate,
     rightarg = gate,
     function = div_prob_var
 );
+
+-- Provide a way for constants to get coerced into gates.
+CREATE CAST (numeric AS gate)
+    WITH INOUT
+    AS IMPLICIT;
+
+CREATE CAST (int AS gate)
+    WITH INOUT
+    AS IMPLICIT;

@@ -29,6 +29,11 @@ typedef enum
     OR
 } condition_type;
 
+bool condition_is_comparator(condition_type cdn)
+{
+    return (cdn != AND) && (cdn != OR);
+}
+
 // The type of gates that exist.
 typedef enum
 {
