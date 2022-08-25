@@ -87,6 +87,11 @@ char *stringify_condition(condition *condition)
     case EQUAL_TO:
         opr = "==";
         break;
+    case NOT_EQUAL_TO:
+        opr = "!=";
+        break;
+    default:
+        opr = "UNRECOGNISED CONDITION";
     }
 
     /**

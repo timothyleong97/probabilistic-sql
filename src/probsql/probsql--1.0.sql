@@ -20,7 +20,17 @@ CREATE TYPE gate (
     output = gate_out
 );
 
--- Define functions for the now-defined gate
+-- Provide a way for constants to get coerced into gates.
+CREATE CAST (numeric AS gate)
+    WITH INOUT
+    AS IMPLICIT;
+
+CREATE CAST (int AS gate)
+    WITH INOUT
+    AS IMPLICIT;
+
+
+-- Define arithmetic functions for the now-defined gate
 CREATE FUNCTION arithmetic_var(gate, gate, cstring)
     RETURNS gate
     AS 'MODULE_PATHNAME', 'arithmetic_var'
@@ -78,11 +88,87 @@ CREATE OPERATOR / (
     function = div_prob_var
 );
 
--- Provide a way for constants to get coerced into gates.
-CREATE CAST (numeric AS gate)
-    WITH INOUT
-    AS IMPLICIT;
+-- Define conditioning functions for the now-defined gate
+CREATE FUNCTION create_condition_from_var_and_var(gate, gate, cstring)
+    RETURNS gate
+    AS 'MODULE_PATHNAME', 'create_condition_from_var_and_var'
+    LANGUAGE C IMMUTABLE STRICT;
 
-CREATE CAST (int AS gate)
-    WITH INOUT
-    AS IMPLICIT;
+
+CREATE FUNCTION less_than_or_equal(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT create_condition_from_var_and_var(g1, g2, 'LESS_THAN_OR_EQUAL')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR <= (
+    leftarg = gate,
+    rightarg = gate,
+    function = less_than_or_equal
+);
+
+CREATE FUNCTION less_than(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT create_condition_from_var_and_var(g1, g2, 'LESS_THAN')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR < (
+    leftarg = gate,
+    rightarg = gate,
+    function = less_than
+);
+
+CREATE FUNCTION more_than_or_equal(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT create_condition_from_var_and_var(g1, g2, 'MORE_THAN_OR_EQUAL')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR >= (
+    leftarg = gate,
+    rightarg = gate,
+    function = more_than_or_equal
+);
+
+CREATE FUNCTION more_than(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT create_condition_from_var_and_var(g1, g2, 'MORE_THAN')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR > (
+    leftarg = gate,
+    rightarg = gate,
+    function = more_than
+);
+
+CREATE FUNCTION equal_to(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT create_condition_from_var_and_var(g1, g2, 'EQUAL_TO')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR = (
+    leftarg = gate,
+    rightarg = gate,
+    function = equal_to
+);
+
+CREATE FUNCTION not_equal_to(g1 gate, g2 gate)
+    RETURNS gate AS
+    $$
+        SELECT create_condition_from_var_and_var(g1, g2, 'NOT_EQUAL_TO')
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR != (
+    leftarg = gate,
+    rightarg = gate,
+    function = not_equal_to
+);

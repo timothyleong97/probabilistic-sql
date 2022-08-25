@@ -6,3 +6,7 @@ SELECT 'gaussian(1.0, 2.0)'::gate - 'poisson(3.0)'::gate AS comp_var;
 SELECT 'gaussian(1.0, 2.0)'::gate * 'poisson(3.0)'::gate AS comp_var;
 SELECT 'gaussian(1.0, 2.0)'::gate / 'poisson(3.0)'::gate AS comp_var;
 SELECT 2::gate AS const_var;
+SELECT 'gaussian(1.0, 2.0)'::gate < 'poisson(3.0)'::gate AS my_cond;
+SELECT 'gaussian(1.0, 2.0)'::gate <= 'poisson(3.0)'::gate AS my_cond;
+SELECT 'gaussian(1.0, 2.0)'::gate <> 'poisson(3.0)'::gate AS my_cond;
+SELECT 'gaussian(1.0, 2.0)'::gate <> 2 AS my_cond;

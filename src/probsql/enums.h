@@ -25,6 +25,7 @@ typedef enum
     MORE_THAN_OR_EQUAL,
     MORE_THAN,
     EQUAL_TO,
+    NOT_EQUAL_TO,
     AND,
     OR
 } condition_type;
