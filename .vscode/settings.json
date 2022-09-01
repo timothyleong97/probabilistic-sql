@@ -7,7 +7,16 @@
         "functional": "cpp",
         "regex.h": "c",
         "gate.h": "c",
-        "enums.h": "c"
+        "enums.h": "c",
+        "stringinfo.h": "c",
+        "print.h": "c",
+        "makefuncs.h": "c",
+        "string.h": "c",
+        "value.h": "c",
+        "array": "c",
+        "string_view": "c",
+        "initializer_list": "c",
+        "utility": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }

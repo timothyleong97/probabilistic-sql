@@ -213,3 +213,20 @@ CREATE OPERATOR ! (
     rightarg = gate,
     function = negate_condition
 );
+
+-- Functions for creating/removing a condition column
+CREATE FUNCTION add_condition(_tbl regclass)
+RETURNS void AS
+$$
+BEGIN
+    EXECUTE format('ALTER TABLE %I ADD COLUMN cond gate DEFAULT (1::gate = 1::gate)', _tbl);
+END
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION drop_condition(_tbl regclass)
+RETURNS void AS
+$$
+BEGIN
+    EXECUTE format('ALTER TABLE %I DROP COLUMN cond', _tbl);
+END
+$$ LANGUAGE plpgsql;
