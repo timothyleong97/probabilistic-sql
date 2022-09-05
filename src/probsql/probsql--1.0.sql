@@ -30,6 +30,14 @@ CREATE CAST (int AS gate)
     AS IMPLICIT;
 
 
+-- Get the Oid of the gate type for internal use.
+CREATE FUNCTION get_gate_oid()
+    RETURNS void 
+    AS 'MODULE_PATHNAME', 'get_gate_oid'
+    LANGUAGE C IMMUTABLE STRICT;
+
+SELECT get_gate_oid();
+
 -- Define arithmetic functions for the now-defined gate
 CREATE FUNCTION arithmetic_var(gate, gate, cstring)
     RETURNS gate
@@ -89,6 +97,13 @@ CREATE OPERATOR / (
 );
 
 -- Define conditioning functions for the now-defined gate
+CREATE FUNCTION return_true(gate, gate) -- for WHERE CLAUSE
+    RETURNS boolean AS
+    $$
+        SELECT true;
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
+
 CREATE FUNCTION create_condition_from_var_and_var(gate, gate, cstring)
     RETURNS gate
     AS 'MODULE_PATHNAME', 'create_condition_from_var_and_var'
@@ -105,7 +120,8 @@ CREATE FUNCTION less_than_or_equal(g1 gate, g2 gate)
 CREATE OPERATOR <= (
     leftarg = gate,
     rightarg = gate,
-    function = less_than_or_equal
+    -- function = less_than_or_equal
+    function = return_true
 );
 
 CREATE FUNCTION less_than(g1 gate, g2 gate)
@@ -118,7 +134,8 @@ CREATE FUNCTION less_than(g1 gate, g2 gate)
 CREATE OPERATOR < (
     leftarg = gate,
     rightarg = gate,
-    function = less_than
+    -- function = less_than
+    function = return_true
 );
 
 CREATE FUNCTION more_than_or_equal(g1 gate, g2 gate)
@@ -131,7 +148,8 @@ CREATE FUNCTION more_than_or_equal(g1 gate, g2 gate)
 CREATE OPERATOR >= (
     leftarg = gate,
     rightarg = gate,
-    function = more_than_or_equal
+    -- function = more_than_or_equal
+    function = return_true
 );
 
 CREATE FUNCTION more_than(g1 gate, g2 gate)
@@ -144,7 +162,8 @@ CREATE FUNCTION more_than(g1 gate, g2 gate)
 CREATE OPERATOR > (
     leftarg = gate,
     rightarg = gate,
-    function = more_than
+    -- function = more_than
+    function = return_true
 );
 
 CREATE FUNCTION equal_to(g1 gate, g2 gate)
@@ -157,7 +176,8 @@ CREATE FUNCTION equal_to(g1 gate, g2 gate)
 CREATE OPERATOR = (
     leftarg = gate,
     rightarg = gate,
-    function = equal_to
+    -- function = equal_to
+    function = return_true
 );
 
 CREATE FUNCTION not_equal_to(g1 gate, g2 gate)
@@ -170,7 +190,8 @@ CREATE FUNCTION not_equal_to(g1 gate, g2 gate)
 CREATE OPERATOR != (
     leftarg = gate,
     rightarg = gate,
-    function = not_equal_to
+    -- function = not_equal_to
+    function = return_true
 );
 
 CREATE FUNCTION combine_condition(gate, gate, cstring)
@@ -230,3 +251,8 @@ BEGIN
     EXECUTE format('ALTER TABLE %I DROP COLUMN cond', _tbl);
 END
 $$ LANGUAGE plpgsql;
+
+-- A function to retrieve the true gate.
+CREATE FUNCTION get_true_gate()
+RETURNS gate AS 'MODULE_PATHNAME', 'get_true_gate'
+LANGUAGE C IMMUTABLE STRICT;

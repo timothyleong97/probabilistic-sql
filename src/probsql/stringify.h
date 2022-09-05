@@ -143,6 +143,8 @@ char *_stringify_gate(Gate *gate)
         return stringify_composite_variable(&(gate->gate_info.comp_variable));
     case CONDITION:
         return stringify_condition(&(gate->gate_info.condition));
+    case PLACEHOLDER_TRUE:
+        return "TRUE";
     default:
         return "UNRECOGNISED_GATE";
     }

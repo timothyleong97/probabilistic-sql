@@ -40,6 +40,7 @@ typedef enum
 {
     BASE_VARIABLE,
     COMPOSITE_VARIABLE,
-    CONDITION
+    CONDITION,
+    PLACEHOLDER_TRUE // Used for the trivial condition
 } gate_type;
 #endif
