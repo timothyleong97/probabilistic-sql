@@ -481,9 +481,13 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
 
             if (firstChildContext->node != NULL && secondChildContext->node != NULL)
             {
-                // Clone this boolexpr, and set the child arguments to those returned by the childContexts because of 
+                // Clone this boolexpr, and set the child arguments to those returned by the childContexts because of
                 // "path compression"
-                BoolExpr *clonedBoolExpr = makeBoolExpr();
+                BoolExpr *clonedBoolExpr = makeBoolExpr(boolExpr->boolop,
+                                                        list_make2(firstChildContext->node, secondChildContext->node),
+                                                        boolExpr->location);
+
+                currContext->node = clonedBoolExpr;
             }
         }
     }
@@ -559,14 +563,15 @@ static bool is_select_from_table_with_gate_in_condition(Query *query)
     */
     Node *quals = jointree->quals;
 
-    OpExpr *opExpr = castNode(OpExpr, quals);
-
     /*
         When walking through the quals, there is no need to examine comparisons on deterministic columns like name <> 'John'
         into the condition column because Postgres immediately removes tuples that fail these comparisons.
 
         I only look for the existence of at least 1 condition that involves a comparison with a gate and another gate or literal.
     */
+    HasGateWalkerContext *context = new_gate_walker_context();
+    has_gate_in_condition_walker(quals, context);
+    
     return false;
 }
 
