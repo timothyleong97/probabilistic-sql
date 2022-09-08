@@ -11,6 +11,7 @@
 #include <nodes/print.h>
 #include <parser/parse_type.h>
 #include <nodes/makefuncs.h>
+#include <nodes/nodeFuncs.h>
 #include <nodes/value.h>
 #include <catalog/heap.h>
 #include <parser/parser.h>
@@ -288,10 +289,10 @@ static void handle_create_table_with_gate(PlannedStmt *query)
                 Constraint *constraint = makeNode(Constraint);
                 constraint->contype = CONSTR_DEFAULT;
                 constraint->location = -1;
-                constraint->raw_expr = (Node *) funccallnode;
+                constraint->raw_expr = (Node *)funccallnode;
                 constraint->cooked_expr = NULL;
                 column->constraints = lappend(column->constraints, constraint);
-                
+
                 // Add this column to the table
                 stmt->tableElts = lappend(stmt->tableElts, column);
                 elog_node_display(INFO, "Final create statement", stmt, true);
@@ -328,7 +329,6 @@ static void handle_create_table_with_gate(PlannedStmt *query)
                 CoerceViaIO *c = castNode(CoerceViaIO, expr);
                 if (c->resulttype == gate_oid)
                 {
-                    // TODO Insert the condition column as a new TargetEntry
                     ereport(ERROR, errmsg("Currently not supported"));
                 }
             }
@@ -337,7 +337,6 @@ static void handle_create_table_with_gate(PlannedStmt *query)
                 Var *v = castNode(Var, expr);
                 if (v->vartype == gate_oid)
                 {
-                    // TODO Insert the condition column
                     ereport(ERROR, errmsg("Currently not supported"));
                 }
             }
@@ -346,7 +345,6 @@ static void handle_create_table_with_gate(PlannedStmt *query)
                 Const *c = castNode(Const, expr);
                 if (c->consttype == gate_oid)
                 {
-                    // TODO Insert the condition column
                     ereport(ERROR, errmsg("Currently not supported"));
                 }
             }
@@ -359,6 +357,178 @@ static void handle_create_table_with_gate(PlannedStmt *query)
     }
 }
 
+// I use this struct to check how to construct the condition column of a query result.
+// The node inside this context needs to match the node that this walker is currently working on.
+// For e.g., For a boolexpr with two opexprs as its operands, I will use two separate context objects to
+// walk through those opexprs, then based on whether they are null or not, I decide what to put into the context of the current
+// function call.
+typedef struct
+{
+    Node *node;
+} HasGateWalkerContext;
+
+void set_context_to_null(HasGateWalkerContext *context)
+{
+    context->node = NULL;
+}
+
+HasGateWalkerContext *new_gate_walker_context()
+{
+    HasGateWalkerContext *context = (HasGateWalkerContext *)palloc(sizeof(HasGateWalkerContext));
+    set_context_to_null(context);
+    return context;
+}
+
+// We are walking inside the quals, checking the arguments for any gate-gate or gate-literal comparison.
+static bool has_gate_in_condition_walker(Node *node, void *context)
+{
+    if (node == NULL)
+    {
+        return false;
+    }
+
+    // This context cannot be null.
+    HasGateWalkerContext *currContext = (HasGateWalkerContext *)context;
+
+    if (IsA(node, FuncExpr))
+    {
+        ereport(ERROR, errmsg("Cannot support functional predicates because of the possibility of side-effects"));
+    }
+    else if (IsA(node, OpExpr))
+    {
+        // E.g. +, -.
+        // Get the number of arguments (1 or 2)
+        OpExpr *opExpr = castNode(OpExpr, node);
+        const int numargs = list_length(opExpr->args);
+        if (numargs == 1)
+        {
+            // Unexpected
+            ereport(ERROR, errmsg("1 arg OpExpr not supported. If negating variable, e.g. -x1, use 0 - x1."));
+        }
+        else if (numargs == 2)
+        {
+            HasGateWalkerContext *firstChildContext = new_gate_walker_context();
+            Node *firstarg = lfirst(list_head(opExpr->args));
+            expression_tree_walker(firstarg, has_gate_in_condition_walker, firstChildContext);
+
+            HasGateWalkerContext *secondChildContext = new_gate_walker_context();
+            Node *secondarg = lfirst(list_nth_cell(opExpr->args, 1));
+            expression_tree_walker(secondarg, has_gate_in_condition_walker, secondChildContext);
+
+            /*
+                For op exprs, like + or -, if at least one argument has a gate, we need to keep this whole expression, e.g.
+                x1 + 2.
+            */
+            if (firstChildContext->node != NULL || secondChildContext->node != NULL)
+            {
+                // Simply put this whole opExpr inside the currContext.
+                currContext->node = opExpr;
+            }
+        }
+    }
+    else if (IsA(node, BoolExpr))
+    {
+
+        BoolExpr *boolExpr = castNode(BoolExpr, node);
+        const int numargs = list_length(boolExpr->args);
+
+        if (numargs == 1)
+        {
+            // E.g. NOT(x1 < x2).
+            HasGateWalkerContext *childContext = new_gate_walker_context();
+            Node *child = lfirst(list_head(boolExpr->args));
+            expression_tree_walker(child, has_gate_in_condition_walker, childContext);
+
+            if (childContext->node != NULL)
+            {
+                // Then we can simply return this gate.
+                currContext->node = boolExpr;
+            }
+        }
+        else if (numargs == 2)
+        {
+            // E.g. AND/OR.
+            HasGateWalkerContext *firstChildContext = new_gate_walker_context();
+            Node *firstarg = lfirst(list_head(opExpr->args));
+            expression_tree_walker(firstarg, has_gate_in_condition_walker, firstChildContext);
+
+            HasGateWalkerContext *secondChildContext = new_gate_walker_context();
+            Node *secondarg = lfirst(list_nth_cell(opExpr->args, 1));
+            expression_tree_walker(secondarg, has_gate_in_condition_walker, secondChildContext);
+
+            /*
+                 For an expr like
+
+                 name <> 'Singapore'
+                 AND
+                 (
+                    x1 < x2
+                    OR
+                    name = 'Malaysia'
+                 )
+
+                 where name is a text column, I want to strip off all the deterministic checks.
+                 So if both children return nothing, I return nothing;
+                 If only one child returns something, I return that child - e.g. in the OR above;
+                 If both children return something, I return this node.
+            */
+
+            if ((firstChildContext->node == NULL) != (secondChildContext->node == NULL))
+            {
+                // One is empty and the other isn't, so just directly return the child
+                currContext->node = firstChildContext->node == NULL ? secondChildContext->node : firstChildContext->node;
+            }
+
+            if (firstChildContext->node != NULL && secondChildContext->node != NULL)
+            {
+                // Clone this boolexpr, and set the child arguments to those returned by the childContexts because of 
+                // "path compression"
+                BoolExpr *clonedBoolExpr = makeBoolExpr();
+            }
+        }
+    }
+    else if (IsA(node, Var))
+    {
+        Var *var = castNode(Var, node);
+        if (var->vartype == gate_oid)
+        {
+            // If the Var is a gate, we want to keep this node and send it back to the parent through the currContext
+            currContext->node = var;
+        }
+    }
+    else if (IsA(node, Const))
+    {
+
+        Const *c = castNode(Const, node);
+        if (c->consttype == gate_oid)
+        {
+            // If the Const is a gate, we want to keep this node and send it back to the parent through the currContext
+            currContext->node = var;
+        }
+    }
+    else if (IsA(node, CoerceViaIO))
+    {
+        CoerceViaIO *c = castNode(CoerceViaIO, node);
+        if (c->resulttype == gate_oid)
+        {
+            // If the CVI is a gate, we want to keep this node and send it back to the parent through the currContext
+            currContext->node = var;
+        }
+    }
+    else
+    {
+        // Catchall for currently unsupported nodes, such as MinMaxExpr
+        ereport(ERROR, errmsg("Detected unfamiliar node in where clause tree"));
+    }
+
+    return false; // Always return false because we need to traverse the whole tree.
+}
+
+// I only need to modify the condition column of a result when there is already
+// an existing condition on a tuple (implying that this tuple is in a table, which implies
+// the existence of the cond column), and
+// the selection involves a gate such that the new tuple will need a conjunction or disjunction
+// in its condition (implying that one of the selection predicates involves some gate column).
 static bool is_select_from_table_with_gate_in_condition(Query *query)
 {
 
@@ -371,11 +541,32 @@ static bool is_select_from_table_with_gate_in_condition(Query *query)
     // Check the WHERE clause for a gate
     elog_node_display(INFO, "query", query, true);
     FromExpr *jointree = query->jointree;
-    if (jointree)
+
+    if (!jointree)
     {
-        Node *quals = jointree->quals;
+        return false;
     }
 
+    /*
+        The rtable in the Query records which tables are involved in this selection. Each node in the rtable is a
+        range table entry that records the name and id of a table. The join tree has two attributes, fromexpr and quals.
+        fromexpr contains the fromlist, which is a list of range table references that contain the index numbers (1-indexed)
+        of the tables in the rtable that are actually being selected from. quals contains the selection predicates, and is a list
+        of opexpr (if you are using oprs like <=>) or funcexpr (if the selection predicate is a function that returns a bool).
+
+        I don't support funcexpr currently because how do you calculate the probability of a blackbox with side-effects? A
+        function can modify the table in some way such that the probability calculations change from time to time?
+    */
+    Node *quals = jointree->quals;
+
+    OpExpr *opExpr = castNode(OpExpr, quals);
+
+    /*
+        When walking through the quals, there is no need to examine comparisons on deterministic columns like name <> 'John'
+        into the condition column because Postgres immediately removes tuples that fail these comparisons.
+
+        I only look for the existence of at least 1 condition that involves a comparison with a gate and another gate or literal.
+    */
     return false;
 }
 
@@ -389,11 +580,6 @@ static PlannedStmt *prob_planner(Query *parse, const char *query_string, int cur
     if (is_select_from_table_with_gate_in_condition(parse))
     {
     }
-
-    /*
-        If this is a JOIN and the WHERE clause involves a gate in some condition, do
-        a CROSS JOIN with the condition value set to that condition
-    */
 
     // Let the previous planner (if it exists) or the standard planner run
     if (prev_planner)
@@ -455,7 +641,8 @@ void _PG_fini(void)
     // Replace the old utility processor
     ProcessUtility_hook = prev_ProcessUtility;
 
-    if (true_gate) {
+    if (true_gate)
+    {
         free(true_gate);
         true_gate = NULL;
     }
