@@ -408,11 +408,11 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
         else if (numargs == 2)
         {
             HasGateWalkerContext *firstChildContext = new_gate_walker_context();
-            Node *firstarg = lfirst(list_head(opExpr->args));
+            Node *firstarg = get_leftop(opExpr);
             expression_tree_walker(firstarg, has_gate_in_condition_walker, firstChildContext);
 
             HasGateWalkerContext *secondChildContext = new_gate_walker_context();
-            Node *secondarg = lfirst(list_nth_cell(opExpr->args, 1));
+            Node *secondarg = get_rightop(opExpr);
             expression_tree_walker(secondarg, has_gate_in_condition_walker, secondChildContext);
 
             /*
@@ -422,7 +422,7 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
             if (firstChildContext->node != NULL || secondChildContext->node != NULL)
             {
                 // Simply put this whole opExpr inside the currContext.
-                currContext->node = opExpr;
+                currContext->node = node;
             }
         }
     }
@@ -442,18 +442,18 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
             if (childContext->node != NULL)
             {
                 // Then we can simply return this gate.
-                currContext->node = boolExpr;
+                currContext->node = node;
             }
         }
         else if (numargs == 2)
         {
             // E.g. AND/OR.
             HasGateWalkerContext *firstChildContext = new_gate_walker_context();
-            Node *firstarg = lfirst(list_head(opExpr->args));
+            Node *firstarg = lfirst(list_head(boolExpr->args));
             expression_tree_walker(firstarg, has_gate_in_condition_walker, firstChildContext);
 
             HasGateWalkerContext *secondChildContext = new_gate_walker_context();
-            Node *secondarg = lfirst(list_nth_cell(opExpr->args, 1));
+            Node *secondarg = lfirst(list_nth_cell(boolExpr->args, 1));
             expression_tree_walker(secondarg, has_gate_in_condition_walker, secondChildContext);
 
             /*
@@ -483,11 +483,11 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
             {
                 // Clone this boolexpr, and set the child arguments to those returned by the childContexts because of
                 // "path compression"
-                BoolExpr *clonedBoolExpr = makeBoolExpr(boolExpr->boolop,
-                                                        list_make2(firstChildContext->node, secondChildContext->node),
-                                                        boolExpr->location);
+                BoolExpr *clonedBoolExpr = (BoolExpr *)makeBoolExpr(boolExpr->boolop,
+                                                                    list_make2(firstChildContext->node, secondChildContext->node),
+                                                                    boolExpr->location);
 
-                currContext->node = clonedBoolExpr;
+                currContext->node = castNode(Node, clonedBoolExpr);
             }
         }
     }
@@ -497,7 +497,7 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
         if (var->vartype == gate_oid)
         {
             // If the Var is a gate, we want to keep this node and send it back to the parent through the currContext
-            currContext->node = var;
+            currContext->node = node;
         }
     }
     else if (IsA(node, Const))
@@ -507,7 +507,7 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
         if (c->consttype == gate_oid)
         {
             // If the Const is a gate, we want to keep this node and send it back to the parent through the currContext
-            currContext->node = var;
+            currContext->node = node;
         }
     }
     else if (IsA(node, CoerceViaIO))
@@ -516,7 +516,7 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
         if (c->resulttype == gate_oid)
         {
             // If the CVI is a gate, we want to keep this node and send it back to the parent through the currContext
-            currContext->node = var;
+            currContext->node = node;
         }
     }
     else
@@ -533,13 +533,13 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
 // the existence of the cond column), and
 // the selection involves a gate such that the new tuple will need a conjunction or disjunction
 // in its condition (implying that one of the selection predicates involves some gate column).
-static bool is_select_from_table_with_gate_in_condition(Query *query)
+static HasGateWalkerContext *handle_select_from_table_with_gate_in_condition(Query *query)
 {
 
     // Check if query is a SELECT on some table
     if (!query->commandType == CMD_SELECT || !query->rtable)
     {
-        return false;
+        return NULL;
     }
 
     // Check the WHERE clause for a gate
@@ -548,7 +548,7 @@ static bool is_select_from_table_with_gate_in_condition(Query *query)
 
     if (!jointree)
     {
-        return false;
+        return NULL;
     }
 
     /*
@@ -571,19 +571,39 @@ static bool is_select_from_table_with_gate_in_condition(Query *query)
     */
     HasGateWalkerContext *context = new_gate_walker_context();
     has_gate_in_condition_walker(quals, context);
-    
-    return false;
+    return context;
+}
+
+/*
+    This function takes a query node, and an expression tree that tells me how to get the new condition column,
+    and I will add a new column def in the result that mirrors this node.
+
+    For e.g., if the node represents the following tree:
+
+          &&
+        /    \
+        <    ==
+       / \   / \
+      x1 x2 x3 40
+
+    Then I will add a column definition in the query result as follows:
+    // TODO
+*/
+static void construct_condition_column(Query *query, Node *node)
+{
 }
 
 // Forward declaration of this extension's planner
 static PlannedStmt *prob_planner(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams)
 {
     /*
-        If this is a SELECT whose condition involves a GATE, return the same tuples, but with the SELECT condition `and`-ed
+        If this is a SELECT whose condition involves a gate, return the same tuples, but with the SELECT condition `and`-ed
         to the tuples.
     */
-    if (is_select_from_table_with_gate_in_condition(parse))
+    HasGateWalkerContext *selectContext = handle_select_from_table_with_gate_in_condition(parse);
+    if (selectContext != NULL && selectContext->node != NULL)
     {
+        // Rewrite the query to generate the new condition column using the context
     }
 
     // Let the previous planner (if it exists) or the standard planner run

@@ -120,7 +120,6 @@ CREATE FUNCTION less_than_or_equal(g1 gate, g2 gate)
 CREATE OPERATOR <= (
     leftarg = gate,
     rightarg = gate,
-    -- function = less_than_or_equal
     function = return_true
 );
 
@@ -134,7 +133,6 @@ CREATE FUNCTION less_than(g1 gate, g2 gate)
 CREATE OPERATOR < (
     leftarg = gate,
     rightarg = gate,
-    -- function = less_than
     function = return_true
 );
 
@@ -148,7 +146,6 @@ CREATE FUNCTION more_than_or_equal(g1 gate, g2 gate)
 CREATE OPERATOR >= (
     leftarg = gate,
     rightarg = gate,
-    -- function = more_than_or_equal
     function = return_true
 );
 
@@ -162,7 +159,6 @@ CREATE FUNCTION more_than(g1 gate, g2 gate)
 CREATE OPERATOR > (
     leftarg = gate,
     rightarg = gate,
-    -- function = more_than
     function = return_true
 );
 
@@ -176,7 +172,6 @@ CREATE FUNCTION equal_to(g1 gate, g2 gate)
 CREATE OPERATOR = (
     leftarg = gate,
     rightarg = gate,
-    -- function = equal_to
     function = return_true
 );
 
@@ -190,7 +185,6 @@ CREATE FUNCTION not_equal_to(g1 gate, g2 gate)
 CREATE OPERATOR != (
     leftarg = gate,
     rightarg = gate,
-    -- function = not_equal_to
     function = return_true
 );
 
