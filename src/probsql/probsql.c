@@ -15,6 +15,8 @@
 #include <nodes/value.h>
 #include <catalog/heap.h>
 #include <parser/parser.h>
+#include <parser/parse_oper.h>
+#include <catalog/namespace.h>
 
 #include <string.h>
 
@@ -24,7 +26,34 @@ PG_MODULE_MAGIC;
  * Gate I/O
  ******************************/
 
+// SQL gate functions
+static Oid and_gate = InvalidOid;
+static Oid or_gate = InvalidOid;
+static Oid negate_condition_oid = InvalidOid;
+static Oid eq = InvalidOid;
+static Oid leq = InvalidOid;
+static Oid lt = InvalidOid;
+static Oid geq = InvalidOid;
+static Oid gt = InvalidOid;
+static Oid neq = InvalidOid;
+
+// SQL gate operators
+static Oid less_than_comparator = InvalidOid;
+static Oid less_than_or_equal_comparator = InvalidOid;
+static Oid more_than_comparator = InvalidOid;
+static Oid more_than_or_equal_comparator = InvalidOid;
+static Oid equal_comparator = InvalidOid;
+static Oid not_equal_comparator = InvalidOid;
+static Oid plus = InvalidOid;
+static Oid normal_minus = InvalidOid;
+static Oid unary_minus = InvalidOid;
+static Oid multiply = InvalidOid;
+static Oid divide = InvalidOid;
+
+// SQL gate type oid
 static Oid gate_oid = InvalidOid;
+
+// The default gate for a new table
 static Gate *true_gate = NULL;
 
 // Returns the textual representation of any gate.
@@ -203,12 +232,41 @@ Datum negate_condition_gate(PG_FUNCTION_ARGS)
     Gate *gate = (Gate *)PG_GETARG_POINTER(0);
 
     // Perform negation
-    gate = negate_condition(gate);
+    gate = negate_condition_oid(gate);
     PG_RETURN_POINTER(gate);
 }
 
-PG_FUNCTION_INFO_V1(get_gate_oid);
-Datum get_gate_oid(PG_FUNCTION_ARGS)
+static Oid get_func_oid(char *s)
+{
+    FuncCandidateList fcl = FuncnameGetCandidates(
+        list_make1(makeString(s)),
+        -1,
+        NIL,
+        false,
+        false,
+        false,
+        false);
+
+    if (fcl == NULL || fcl->oid == InvalidOid)
+    {
+        ereport(ERROR, errmsg("%s func_oid not found", s));
+    }
+
+    return fcl->oid;
+}
+
+static Oid find_oper_oid(const char *op_name, bool isPrefix)
+{
+    Oid operatorObjectId = OpernameGetOprid(list_make1(makeString(op_name)), isPrefix ? InvalidOid : gate_oid, gate_oid);
+    if (operatorObjectId == InvalidOid)
+    {
+        ereport(ERROR, errmsg("%s oper_oid not found", op_name));
+    }
+    return operatorObjectId;
+}
+
+PG_FUNCTION_INFO_V1(get_oids);
+Datum get_oids(PG_FUNCTION_ARGS)
 {
     // Create a node that holds the type name of a gate
     Value *value = makeString("gate");
@@ -223,6 +281,30 @@ Datum get_gate_oid(PG_FUNCTION_ARGS)
     // Also create the default gate for true
     true_gate = (Gate *)malloc(sizeof(Gate));
     true_gate->gate_type = PLACEHOLDER_TRUE;
+
+    // Get all function OIDs (names come from the SQL wrapper)
+    and_gate = get_func_oid("and_gate");
+    or_gate = get_func_oid("or_gate");
+    negate_condition_oid = get_func_oid("negate_condition");
+    eq = get_func_oid("equal_to");
+    leq = get_func_oid("less_than_or_equal");
+    lt = get_func_oid("less_than");
+    geq = get_func_oid("more_than_or_equal");
+    gt = get_func_oid("more_than");
+    neq = get_func_oid("not_equal_to");
+
+    // Get all operator OIDs
+    less_than_comparator = find_oper_oid("<", false);
+    less_than_or_equal_comparator = find_oper_oid("<=", false);
+    more_than_comparator = find_oper_oid(">", false);
+    more_than_or_equal_comparator = find_oper_oid(">=", false);
+    equal_comparator = find_oper_oid("=", false);
+    not_equal_comparator = find_oper_oid("!=", false);
+    plus = find_oper_oid("+", false);
+    normal_minus = find_oper_oid("-", false);
+    unary_minus = find_oper_oid("-", true);
+    multiply = find_oper_oid("*", false);
+    divide = find_oper_oid("/", false);
 }
 
 PG_FUNCTION_INFO_V1(get_true_gate);
@@ -239,6 +321,9 @@ Datum get_true_gate(PG_FUNCTION_ARGS)
 /* Saved hook values in case of unload */
 static planner_hook_type prev_planner = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+
+// The condition column name
+static const char *PROBSQL_CONDITION = "cond";
 
 /*
     Looks out for CREATE TABLE [AS].
@@ -284,7 +369,7 @@ static void handle_create_table_with_gate(PlannedStmt *query)
                 // Ref: https://doxygen.postgresql.org/parse__utilcmd_8c_source.html#l00627
                 // and https://doxygen.postgresql.org/parse__expr_8c_source.html#l00094
                 // and https://doxygen.postgresql.org/test__rls__hooks_8c_source.html#l00045
-                ColumnDef *column = makeColumnDef("cond", gate_oid, -1, 0);
+                ColumnDef *column = makeColumnDef(PROBSQL_CONDITION, gate_oid, -1, 0);
                 FuncCall *funccallnode = makeFuncCall(list_make1(makeString("get_true_gate")), NIL, COERCE_EXPLICIT_CALL, -1);
                 Constraint *constraint = makeNode(Constraint);
                 constraint->contype = CONSTR_DEFAULT;
@@ -396,34 +481,26 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
     }
     else if (IsA(node, OpExpr))
     {
-        // E.g. +, -.
-        // Get the number of arguments (1 or 2)
+        // E.g. +, -
         OpExpr *opExpr = castNode(OpExpr, node);
         const int numargs = list_length(opExpr->args);
-        if (numargs == 1)
-        {
-            // Unexpected
-            ereport(ERROR, errmsg("1 arg OpExpr not supported. If negating variable, e.g. -x1, use 0 - x1."));
-        }
-        else if (numargs == 2)
-        {
-            HasGateWalkerContext *firstChildContext = new_gate_walker_context();
-            Node *firstarg = get_leftop(opExpr);
-            expression_tree_walker(firstarg, has_gate_in_condition_walker, firstChildContext);
 
-            HasGateWalkerContext *secondChildContext = new_gate_walker_context();
-            Node *secondarg = get_rightop(opExpr);
-            expression_tree_walker(secondarg, has_gate_in_condition_walker, secondChildContext);
+        HasGateWalkerContext *firstChildContext = new_gate_walker_context();
+        Node *firstarg = get_leftop(opExpr);
+        has_gate_in_condition_walker(firstarg, firstChildContext);
 
-            /*
-                For op exprs, like + or -, if at least one argument has a gate, we need to keep this whole expression, e.g.
-                x1 + 2.
-            */
-            if (firstChildContext->node != NULL || secondChildContext->node != NULL)
-            {
-                // Simply put this whole opExpr inside the currContext.
-                currContext->node = node;
-            }
+        HasGateWalkerContext *secondChildContext = new_gate_walker_context();
+        Node *secondarg = get_rightop(opExpr);
+        has_gate_in_condition_walker(secondarg, secondChildContext);
+
+        /*
+            For op exprs, like + or -, if at least one argument has a gate, we need to keep this whole expression, e.g.
+            x1 + 2.
+        */
+        if (firstChildContext->node != NULL || secondChildContext->node != NULL)
+        {
+            // Simply put this whole opExpr inside the currContext.
+            currContext->node = node;
         }
     }
     else if (IsA(node, BoolExpr))
@@ -436,8 +513,8 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
         {
             // E.g. NOT(x1 < x2).
             HasGateWalkerContext *childContext = new_gate_walker_context();
-            Node *child = lfirst(list_head(boolExpr->args));
-            expression_tree_walker(child, has_gate_in_condition_walker, childContext);
+            Node *child = linitial(boolExpr->args);
+            has_gate_in_condition_walker(child, childContext);
 
             if (childContext->node != NULL)
             {
@@ -449,12 +526,12 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
         {
             // E.g. AND/OR.
             HasGateWalkerContext *firstChildContext = new_gate_walker_context();
-            Node *firstarg = lfirst(list_head(boolExpr->args));
-            expression_tree_walker(firstarg, has_gate_in_condition_walker, firstChildContext);
+            Node *firstarg = linitial(boolExpr->args);
+            has_gate_in_condition_walker(firstarg, firstChildContext);
 
             HasGateWalkerContext *secondChildContext = new_gate_walker_context();
-            Node *secondarg = lfirst(list_nth_cell(boolExpr->args, 1));
-            expression_tree_walker(secondarg, has_gate_in_condition_walker, secondChildContext);
+            Node *secondarg = lsecond(boolExpr->args);
+            has_gate_in_condition_walker(secondarg, secondChildContext);
 
             /*
                  For an expr like
@@ -481,8 +558,8 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
 
             if (firstChildContext->node != NULL && secondChildContext->node != NULL)
             {
-                // Clone this boolexpr, and set the child arguments to those returned by the childContexts because of
-                // "path compression"
+                // Clone this boolexpr, and set the child arguments to those returned by the childContexts
+                // for copy-on-write + "path compression"
                 BoolExpr *clonedBoolExpr = (BoolExpr *)makeBoolExpr(boolExpr->boolop,
                                                                     list_make2(firstChildContext->node, secondChildContext->node),
                                                                     boolExpr->location);
@@ -535,11 +612,12 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
 // in its condition (implying that one of the selection predicates involves some gate column).
 static HasGateWalkerContext *handle_select_from_table_with_gate_in_condition(Query *query)
 {
+    HasGateWalkerContext *context = new_gate_walker_context();
 
     // Check if query is a SELECT on some table
     if (!query->commandType == CMD_SELECT || !query->rtable)
     {
-        return NULL;
+        return context;
     }
 
     // Check the WHERE clause for a gate
@@ -548,7 +626,7 @@ static HasGateWalkerContext *handle_select_from_table_with_gate_in_condition(Que
 
     if (!jointree)
     {
-        return NULL;
+        return context;
     }
 
     /*
@@ -569,9 +647,142 @@ static HasGateWalkerContext *handle_select_from_table_with_gate_in_condition(Que
 
         I only look for the existence of at least 1 condition that involves a comparison with a gate and another gate or literal.
     */
-    HasGateWalkerContext *context = new_gate_walker_context();
     has_gate_in_condition_walker(quals, context);
+    elog_node_display(INFO, "Gate walk context", context->node, true);
     return context;
+}
+
+/*
+    For a quals tree like
+
+          AND
+        /     \
+        <     ==
+       / \    / \
+      x1 x2  x3 40
+
+    where the AND, < and == are SQL operators, I will construct a gate where the
+    SQL operators are replaced with the gate variants, so that the final node specifies a gate and not a boolean.
+
+    Note that AND gates and OR gates can have multiple args, while my probabilistic operators only take 2.
+*/
+static Node *convert_sql_ops_to_gate_ops(Node *node)
+{
+    if (node == NIL)
+    {
+        return node;
+    }
+
+    if (IsA(node, OpExpr))
+    {
+        // Check the operator type
+        OpExpr *original_expression = castNode(OpExpr, node);
+
+        // Convert the argument nodes first
+        if (list_length(original_expression->args) == 1)
+        {
+            linitial(original_expression->args) = convert_sql_ops_to_gate_ops(linitial(original_expression->args));
+        }
+        else
+        {
+            linitial(original_expression->args) = convert_sql_ops_to_gate_ops(linitial(original_expression->args));
+            lsecond(original_expression->args) = convert_sql_ops_to_gate_ops(lsecond(original_expression->args));
+        }
+
+        FuncExpr *final_expression;
+
+        /*
+            Because in the WHERE clause, comparators must produce booleans, I have made the < operator (as in g1 < g2) a comparator, but in fact I want the
+            < operator to turn its arguments into a gate.
+
+            Hence, the conditional clauses below take the boolean operators, which are the comparators, and transforms them into a FuncExpr
+            where the comparator operator turns into a gate.
+
+            The plus/minus/times/divide operators have no issue - they take gates and return gates, so they don't require further processing.
+        */
+        if (original_expression->opno == less_than_comparator)
+        {
+            final_expression = makeFuncExpr(lt, gate_oid, original_expression->args, InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+        }
+        else if (original_expression->opno == less_than_or_equal_comparator)
+        {
+            final_expression = makeFuncExpr(leq, gate_oid, original_expression->args, InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+        }
+        else if (original_expression->opno == more_than_comparator)
+        {
+            final_expression = makeFuncExpr(gt, gate_oid, original_expression->args, InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+        }
+        else if (original_expression->opno == more_than_or_equal_comparator)
+        {
+            final_expression = makeFuncExpr(geq, gate_oid, original_expression->args, InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+        }
+        else if (original_expression->opno == equal_comparator)
+        {
+            final_expression = makeFuncExpr(eq, gate_oid, original_expression->args, InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+        }
+        else if (original_expression->opno == not_equal_comparator)
+        {
+            final_expression = makeFuncExpr(neq, gate_oid, original_expression->args, InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+        }
+        else
+        {
+            return node;
+        }
+
+        return final_expression;
+    }
+    else if (IsA(node, BoolExpr))
+    {
+        // Convert the arguments first
+        BoolExpr *boolExpr = castNode(BoolExpr, node);
+        ListCell *lc;
+        int list_len = list_length(boolExpr->args);
+        foreach (lc, boolExpr->args)
+        {
+            lfirst(lc) = convert_sql_ops_to_gate_ops(lfirst(lc));
+        }
+
+        // Convert the bool expr to an opexpr.
+        OpExpr *result;
+        if (boolExpr->boolop == AND_EXPR)
+        {
+            // Conjoin the first two arguments
+            result = make_opclause(and_gate, gate_oid, false, linitial(boolExpr->args), lsecond(boolExpr->args), InvalidOid, InvalidOid);
+
+            // Conjoin the rest.
+            for (int i = 2; i < list_len; ++i)
+            {
+                result = make_opclause(and_gate, gate_oid, false, result, list_nth(boolExpr->args, i), InvalidOid, InvalidOid);
+            }
+        }
+        else if (boolExpr->boolop == OR_EXPR)
+        {
+            // Conjoin the first two arguments
+            result = make_opclause(or_gate, gate_oid, false, linitial(boolExpr->args), lsecond(boolExpr->args), InvalidOid, InvalidOid);
+
+            // Conjoin the rest.
+            for (int i = 2; i < list_len; ++i)
+            {
+                result = make_opclause(or_gate, gate_oid, false, result, list_nth(boolExpr->args, i), InvalidOid, InvalidOid);
+            }
+        }
+        else if (boolExpr->boolop == NOT_EXPR)
+        {
+            result = make_opclause(negate_condition_oid, gate_oid, false, linitial(boolExpr->args), NIL, InvalidOid, InvalidOid);
+        }
+
+        return castNode(Node, result);
+    }
+    else if (IsA(node, Var) || IsA(node, Const) || IsA(node, CoerceViaIO))
+    {
+        // No operator to convert.
+        return node;
+    }
+    else
+    {
+        // Catchall for unknown node types
+        elog_node_display(ERROR, "Unrecognised node type in convert node to gate", node, true);
+    }
 }
 
 /*
@@ -587,24 +798,153 @@ static HasGateWalkerContext *handle_select_from_table_with_gate_in_condition(Que
       x1 x2 x3 40
 
     Then I will add a column definition in the query result as follows:
-    // TODO
 */
 static void construct_condition_column(Query *query, Node *node)
 {
+    /*  Get the list of all cond columns in the search query's range tables.
+        Because I want to AND these columns in the end, I want to keep the reference to the
+        cond columns in a list of Vars.
+    */
+    List *condition_columns = NIL;
+    List *rtable = query->rtable;
+    ListCell *lc;
+
+    int table_index = 0; // the index of the rtable which we need to give to Var
+    foreach (lc, rtable)
+    {
+        ++table_index;
+        RangeTblEntry *rte = castNode(RangeTblEntry, lfirst(lc));
+
+        /*
+            This logic is brittle in the sense because it assumes that a column named cond is
+            the column for the probabilistic condition.
+        */
+        Alias *alias = rte->eref; // Tells you what the colnames are
+
+        ListCell *lc2;
+        int column_index = 0; // the index of the column which we need to give to Var
+        foreach (lc2, alias->colnames)
+        {
+            ++column_index;
+            if (strcmp(strVal(lfirst(lc2)), PROBSQL_CONDITION) == 0)
+            {
+                // Add a Var referencing this column to condition_columns
+                // Subqueries not supported.
+                Var *var = makeVar(table_index, column_index, gate_oid, -1, InvalidOid, 0);
+                condition_columns = lappend(condition_columns, var);
+            }
+        }
+    }
+
+    // Exclude those cond columns in the target list
+    List *cells_to_delete = NIL;
+    foreach (lc, query->targetList)
+    {
+        TargetEntry *targetEntry = castNode(TargetEntry, lfirst(lc));
+        /*
+            This logic is brittle also, because it assumes the condition name is never used by the user elsewhere,
+            and that the user did not purposely select cond as ALIAS_NAME.
+            Sample query: select first.x+second.x, second.cond from a as first, a as second where first.x < 1::gate;
+
+        */
+        if (strcmp(targetEntry->resname, PROBSQL_CONDITION) == 0)
+        {
+            // Mark this list cell for deletion from the target list
+            // Implementation detail: cells_to_delete is a List of ListCells pointing to original ListCells in
+            // the targetList.
+            cells_to_delete = lappend(cells_to_delete, lc);
+        }
+    }
+
+    int targetEntries_deleted = 0;
+    foreach (lc, cells_to_delete)
+    {
+        query->targetList = list_delete_cell(query->targetList, lfirst(lc));
+    }
+
+    // Fix the resno of the target entries
+    int resno = 1;
+    foreach (lc, query->targetList)
+    {
+        TargetEntry *targetEntry = lfirst(lc);
+        targetEntry->resno = resno;
+        ++resno;
+    }
+
+    /*
+        Create an Expr to ANDs all those cond columns together with the given node
+        If the where clause is empty, then the node passed in will be null, so there's no new condition to AND.
+        However, you still have to AND the conditions in the tables, if there are any.
+        It's possible that both the WHERE clause is empty and there are no tables with conds, in which case nothing has to be done.
+
+        As a first step, I find out how many variables we have.
+
+        It could be zero, if this select does not involve any table with gates.
+        It could just be one, if I am projecting from a p-table. I just put that one condition column back into the target list.
+        It could be two or more, if I have a probabilistic condition, and I have condition columns in the tables.
+    */
+    int num_cond_gates = 0;
+    if (node != NULL)
+    {
+        ++num_cond_gates;
+    }
+    num_cond_gates += list_length(condition_columns);
+
+    // Case 1: There are no condition variables.
+    if (num_cond_gates == 0)
+    {
+        // No need to rewrite the query.
+        return;
+    }
+    else if (num_cond_gates == 1)
+    {
+        // Case 2: There is only one condition variable.
+        // If no condition columns in rtables - ok.
+        // If there is no WHERE clause and just one condition column, use node to hold that condition column.
+        if (node == NULL)
+        {
+            node = linitial(condition_columns);
+        }
+    }
+    else
+    {
+        // Case 3: You have at least one condition column, and possibly node is non-null.
+        // They need to be conjoined into one gate.
+        if (node != NULL)
+        {
+            condition_columns = lappend(condition_columns, node); // Conds are Vars, node is some OpExpr or BoolExpr
+
+            // Perform a right-fold, with SQL's boolean AND as the conjoiner. The reason I don't
+            // do the operator replacement now, is there could be deeply nested operators inside the Exprs
+            // so I might as well do the replacement in one shot later.
+            BoolExpr *result_condition_expr = makeBoolExpr(
+                AND_EXPR,
+                condition_columns,
+                -1);
+            node = castNode(Node, result_condition_expr);
+        }
+    }
+
+    // Replace the SQL boolean comparators with the probabilistic counterparts
+    node = convert_sql_ops_to_gate_ops(node);
+
+    // Put node in the target list.
+    TargetEntry *targetEntry = makeTargetEntry(
+        castNode(Expr, node), // Gate conditions can only be Exprs
+        1 + list_length(query->targetList),
+        PROBSQL_CONDITION,
+        false);
+    query->targetList = lappend(query->targetList, targetEntry);
 }
 
 // Forward declaration of this extension's planner
 static PlannedStmt *prob_planner(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams)
 {
-    /*
-        If this is a SELECT whose condition involves a gate, return the same tuples, but with the SELECT condition `and`-ed
-        to the tuples.
-    */
+    // Strip out all the deterministic checks in the WHERE clause, if any.
     HasGateWalkerContext *selectContext = handle_select_from_table_with_gate_in_condition(parse);
-    if (selectContext != NULL && selectContext->node != NULL)
-    {
-        // Rewrite the query to generate the new condition column using the context
-    }
+
+    // Rewrite the query to generate the new condition column using the context
+    construct_condition_column(parse, selectContext->node); // impl detail: selectContext is always non-null.
 
     // Let the previous planner (if it exists) or the standard planner run
     if (prev_planner)

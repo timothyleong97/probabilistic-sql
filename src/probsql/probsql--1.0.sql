@@ -29,15 +29,6 @@ CREATE CAST (int AS gate)
     WITH INOUT
     AS IMPLICIT;
 
-
--- Get the Oid of the gate type for internal use.
-CREATE FUNCTION get_gate_oid()
-    RETURNS void 
-    AS 'MODULE_PATHNAME', 'get_gate_oid'
-    LANGUAGE C IMMUTABLE STRICT;
-
-SELECT get_gate_oid();
-
 -- Define arithmetic functions for the now-defined gate
 CREATE FUNCTION arithmetic_var(gate, gate, cstring)
     RETURNS gate
@@ -68,6 +59,18 @@ CREATE OPERATOR - (
     leftarg = gate,
     rightarg = gate,
     function = sub_prob_var
+);
+
+CREATE FUNCTION unary_minus(g gate)
+    RETURNS gate AS
+    $$
+        SELECT sub_prob_var(0::gate, g);
+    $$ 
+    LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR - (
+    rightarg = gate,
+    function = unary_minus
 );
 
 CREATE FUNCTION times_prob_var(g1 gate, g2 gate)
@@ -250,3 +253,12 @@ $$ LANGUAGE plpgsql;
 CREATE FUNCTION get_true_gate()
 RETURNS gate AS 'MODULE_PATHNAME', 'get_true_gate'
 LANGUAGE C IMMUTABLE STRICT;
+
+
+-- Get the Oids of user-defined types/functions for internal use.
+CREATE FUNCTION get_oids()
+    RETURNS void 
+    AS 'MODULE_PATHNAME', 'get_oids'
+    LANGUAGE C IMMUTABLE STRICT;
+
+SELECT get_oids();
