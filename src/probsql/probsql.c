@@ -232,7 +232,7 @@ Datum negate_condition_gate(PG_FUNCTION_ARGS)
     Gate *gate = (Gate *)PG_GETARG_POINTER(0);
 
     // Perform negation
-    gate = negate_condition_oid(gate);
+    gate = negate_condition(gate);
     PG_RETURN_POINTER(gate);
 }
 
@@ -255,7 +255,7 @@ static Oid get_func_oid(char *s)
     return fcl->oid;
 }
 
-static Oid find_oper_oid(const char *op_name, bool isPrefix)
+static Oid find_oper_oid(char *op_name, bool isPrefix)
 {
     Oid operatorObjectId = OpernameGetOprid(list_make1(makeString(op_name)), isPrefix ? InvalidOid : gate_oid, gate_oid);
     if (operatorObjectId == InvalidOid)
@@ -323,7 +323,7 @@ static planner_hook_type prev_planner = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 
 // The condition column name
-static const char *PROBSQL_CONDITION = "cond";
+static char *PROBSQL_CONDITION = "cond";
 
 /*
     Looks out for CREATE TABLE [AS].
@@ -668,7 +668,7 @@ static HasGateWalkerContext *handle_select_from_table_with_gate_in_condition(Que
 */
 static Node *convert_sql_ops_to_gate_ops(Node *node)
 {
-    if (node == NIL)
+    if (node == NULL)
     {
         return node;
     }
@@ -729,7 +729,7 @@ static Node *convert_sql_ops_to_gate_ops(Node *node)
             return node;
         }
 
-        return final_expression;
+        return castNode(Node, final_expression);
     }
     else if (IsA(node, BoolExpr))
     {
@@ -743,7 +743,7 @@ static Node *convert_sql_ops_to_gate_ops(Node *node)
         }
 
         // Convert the bool expr to an opexpr.
-        OpExpr *result;
+        Expr *result;
         if (boolExpr->boolop == AND_EXPR)
         {
             // Conjoin the first two arguments
@@ -768,7 +768,7 @@ static Node *convert_sql_ops_to_gate_ops(Node *node)
         }
         else if (boolExpr->boolop == NOT_EXPR)
         {
-            result = make_opclause(negate_condition_oid, gate_oid, false, linitial(boolExpr->args), NIL, InvalidOid, InvalidOid);
+            result = make_opclause(negate_condition_oid, gate_oid, false, linitial(boolExpr->args), NULL, InvalidOid, InvalidOid);
         }
 
         return castNode(Node, result);
@@ -917,7 +917,7 @@ static void construct_condition_column(Query *query, Node *node)
             // Perform a right-fold, with SQL's boolean AND as the conjoiner. The reason I don't
             // do the operator replacement now, is there could be deeply nested operators inside the Exprs
             // so I might as well do the replacement in one shot later.
-            BoolExpr *result_condition_expr = makeBoolExpr(
+            Expr *result_condition_expr = makeBoolExpr(
                 AND_EXPR,
                 condition_columns,
                 -1);
