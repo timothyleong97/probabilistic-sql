@@ -95,7 +95,7 @@ char *stringify_condition(condition *condition)
     }
 
     /**
-     * A condition always takes the form <left gate> <opr> <right gate>
+     * A condition (which is not an aggregate) always takes the form <left gate> <opr> <right gate>
      */
     char *stringified_left = _stringify_gate(condition->left_gate);
     char *stringified_right = _stringify_gate(condition->right_gate);

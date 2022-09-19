@@ -59,11 +59,11 @@ Gate *constant(double constant)
 Gate *combine_prob_gates(Gate *gate1, Gate *gate2, probabilistic_composition opr)
 {
     // Check that both gates represent probability variables.
-    if (gate1->gate_type == CONDITION || gate2->gate_type == CONDITION)
+    if (!is_prob_type(gate1->gate_type) || !is_prob_type(gate2->gate_type))
     {
         ereport(ERROR,
                 errcode(ERRCODE_WRONG_OBJECT_TYPE),
-                errmsg("Detected condition gate instead of prob gate"));
+                errmsg("Detected condition gate instead of prob gate: %s %s", _stringify_gate(gate1), _stringify_gate(gate2)));
     }
 
     // Create the result gate
@@ -88,11 +88,11 @@ Gate *combine_prob_gates(Gate *gate1, Gate *gate2, probabilistic_composition opr
 Gate *create_condition_from_prob_gates(Gate *gate1, Gate *gate2, condition_type opr)
 {
     // Check that gates are probability gates
-    if (gate1->gate_type == CONDITION || gate2->gate_type == CONDITION)
+    if (!is_prob_type(gate1->gate_type) || !is_prob_type(gate2->gate_type))
     {
         ereport(ERROR,
                 errcode(ERRCODE_WRONG_OBJECT_TYPE),
-                errmsg("Detected condition gate instead of prob gate"));
+                errmsg("Detected condition gate instead of prob gate: %s %s", _stringify_gate(gate1), _stringify_gate(gate2)));
     }
 
     // Check that the condition is a comparator condition
@@ -123,12 +123,12 @@ Gate *create_condition_from_prob_gates(Gate *gate1, Gate *gate2, condition_type 
  */
 Gate *combine_two_conditions(Gate *gate1, Gate *gate2, condition_type opr)
 {
-    // Check that the gates are probability gates
-    if (gate1->gate_type != CONDITION || gate2->gate_type != CONDITION)
+    // Check that the gates are condition gates
+    if (is_prob_type(gate1->gate_type) || is_prob_type(gate2->gate_type))
     {
         ereport(ERROR,
                 errcode(ERRCODE_WRONG_OBJECT_TYPE),
-                errmsg("Detected prob gate instead of condition gate"));
+                errmsg("Detected prob gate instead of condition gate: %s, %s", _stringify_gate(gate1), _stringify_gate(gate2)));
     }
 
     // Check that the condition is a boolean condition
@@ -136,7 +136,17 @@ Gate *combine_two_conditions(Gate *gate1, Gate *gate2, condition_type opr)
     {
         ereport(ERROR,
                 errcode(ERRCODE_WRONG_OBJECT_TYPE),
-                errmsg("Detected comparator condition instead of boolean condition"));
+                errmsg("Detected comparator condition instead of boolean condition: %u", opr));
+    }
+
+    // Optimisation: If one is the placeholder true gate, return the other one.
+    if (gate1->gate_type == PLACEHOLDER_TRUE)
+    {
+        return gate2;
+    }
+    else if (gate2->gate_type == PLACEHOLDER_TRUE)
+    {
+        return gate1;
     }
 
     // Create the result gate
@@ -157,11 +167,11 @@ Gate *combine_two_conditions(Gate *gate1, Gate *gate2, condition_type opr)
 Gate *negate_condition(Gate *gate)
 {
     // Check that this gate is a condition gate
-    if (gate->gate_type != CONDITION)
+    if (is_prob_type(gate->gate_type))
     {
         ereport(ERROR,
                 errcode(ERRCODE_WRONG_OBJECT_TYPE),
-                errmsg("Detected prob gate instead of condition gate"));
+                errmsg("Detected prob gate instead of condition gate = %s", _stringify_gate(gate)));
     }
 
     if (gate->gate_info.condition.condition_type == LESS_THAN_OR_EQUAL)
@@ -202,7 +212,7 @@ Gate *negate_condition(Gate *gate)
         gate->gate_info.condition.left_gate = negate_condition(gate->gate_info.condition.left_gate);
         gate->gate_info.condition.right_gate = negate_condition(gate->gate_info.condition.right_gate);
     }
-    else 
+    else
     {
         // Catchall for unrecognised condition types
         ereport(ERROR,

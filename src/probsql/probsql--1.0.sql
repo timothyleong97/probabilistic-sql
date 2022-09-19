@@ -203,11 +203,6 @@ CREATE FUNCTION and_gate(g1 gate, g2 gate)
     $$
     LANGUAGE SQL IMMUTABLE STRICT;
 
-CREATE OPERATOR && (
-    leftarg = gate,
-    rightarg = gate,
-    function = and_gate
-);
 
 CREATE FUNCTION or_gate(g1 gate, g2 gate)
     RETURNS gate AS
@@ -216,21 +211,29 @@ CREATE FUNCTION or_gate(g1 gate, g2 gate)
     $$
     LANGUAGE SQL IMMUTABLE STRICT;
 
-CREATE OPERATOR || (
-    leftarg = gate,
-    rightarg = gate,
-    function = or_gate
-);
 
 CREATE FUNCTION negate_condition(gate)
     RETURNS gate 
     AS 'MODULE_PATHNAME', 'negate_condition_gate'
     LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OPERATOR ! (
-    rightarg = gate,
-    function = negate_condition
-);
+-- Operator class for Postgres to implement DISTINCT
+-- Ref: https://stackoverflow.com/questions/34971181/creating-custom-equality-operator-for-postgresql-type-point-for-distinct-cal
+CREATE FUNCTION gate_compare(gate, gate)
+RETURNS integer LANGUAGE SQL IMMUTABLE AS 
+$$
+    SELECT 0;
+$$;
+
+CREATE OPERATOR CLASS gate_ops
+    DEFAULT FOR TYPE gate USING btree AS
+        operator 1 <,
+        operator 2 <=,
+        operator 3 =,
+        operator 4 >=,
+        operator 5 >,
+        function 1 gate_compare(gate, gate);
+
 
 -- Functions for creating/removing a condition column
 CREATE FUNCTION add_condition(_tbl regclass)

@@ -44,11 +44,6 @@ static Oid more_than_comparator = InvalidOid;
 static Oid more_than_or_equal_comparator = InvalidOid;
 static Oid equal_comparator = InvalidOid;
 static Oid not_equal_comparator = InvalidOid;
-static Oid plus = InvalidOid;
-static Oid normal_minus = InvalidOid;
-static Oid unary_minus = InvalidOid;
-static Oid multiply = InvalidOid;
-static Oid divide = InvalidOid;
 
 // SQL gate type oid
 static Oid gate_oid = InvalidOid;
@@ -299,18 +294,14 @@ Datum get_oids(PG_FUNCTION_ARGS)
     more_than_comparator = find_oper_oid(">", false);
     more_than_or_equal_comparator = find_oper_oid(">=", false);
     equal_comparator = find_oper_oid("=", false);
-    not_equal_comparator = find_oper_oid("!=", false);
-    plus = find_oper_oid("+", false);
-    normal_minus = find_oper_oid("-", false);
-    unary_minus = find_oper_oid("-", true);
-    multiply = find_oper_oid("*", false);
-    divide = find_oper_oid("/", false);
+    not_equal_comparator = find_oper_oid("<>", false);
+
+    PG_RETURN_VOID();
 }
 
 PG_FUNCTION_INFO_V1(get_true_gate);
 Datum get_true_gate(PG_FUNCTION_ARGS)
 {
-    ereport(INFO, errmsg("Type = %u", true_gate->gate_type));
     PG_RETURN_POINTER(true_gate);
 }
 
@@ -436,7 +427,7 @@ static void handle_create_table_with_gate(PlannedStmt *query)
             else
             {
                 // There could be some other Node types that I'm not aware of. Log it:
-                ereport(ERROR, errmsg("Unrecognised node tag in handle_create_table_with_gate: %u", nodeTag(expr)));
+                elog_node_display(INFO, "Unrecognised node tag in handle_create_table_with_gate", expr, true);
             }
         }
     }
@@ -477,7 +468,7 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
 
     if (IsA(node, FuncExpr))
     {
-        ereport(ERROR, errmsg("Cannot support functional predicates because of the possibility of side-effects"));
+        ereport(INFO, errmsg("Cannot support functional predicates because of the possibility of side-effects"));
     }
     else if (IsA(node, OpExpr))
     {
@@ -599,7 +590,7 @@ static bool has_gate_in_condition_walker(Node *node, void *context)
     else
     {
         // Catchall for currently unsupported nodes, such as MinMaxExpr
-        ereport(ERROR, errmsg("Detected unfamiliar node in where clause tree"));
+        elog_node_display(INFO, "Detected unfamiliar node in where clause tree", node, true);
     }
 
     return false; // Always return false because we need to traverse the whole tree.
@@ -621,7 +612,6 @@ static HasGateWalkerContext *handle_select_from_table_with_gate_in_condition(Que
     }
 
     // Check the WHERE clause for a gate
-    elog_node_display(INFO, "query", query, true);
     FromExpr *jointree = query->jointree;
 
     if (!jointree)
@@ -648,7 +638,7 @@ static HasGateWalkerContext *handle_select_from_table_with_gate_in_condition(Que
         I only look for the existence of at least 1 condition that involves a comparison with a gate and another gate or literal.
     */
     has_gate_in_condition_walker(quals, context);
-    elog_node_display(INFO, "Gate walk context", context->node, true);
+    // elog_node_display(INFO, "Gate walk context", context->node, true);
     return context;
 }
 
@@ -662,11 +652,11 @@ static HasGateWalkerContext *handle_select_from_table_with_gate_in_condition(Que
       x1 x2  x3 40
 
     where the AND, < and == are SQL operators, I will construct a gate where the
-    SQL operators are replaced with the gate variants, so that the final node specifies a gate and not a boolean.
+    SQL operators are replaced with the gate functional counterparts, so that the final node specifies a gate and not a boolean.
 
     Note that AND gates and OR gates can have multiple args, while my probabilistic operators only take 2.
 */
-static Node *convert_sql_ops_to_gate_ops(Node *node)
+static Node *convert_sql_ops_to_gate_funcs(Node *node)
 {
     if (node == NULL)
     {
@@ -679,26 +669,23 @@ static Node *convert_sql_ops_to_gate_ops(Node *node)
         OpExpr *original_expression = castNode(OpExpr, node);
 
         // Convert the argument nodes first
-        if (list_length(original_expression->args) == 1)
+        ListCell *lc;
+        int list_len = list_length(original_expression->args);
+        foreach (lc, original_expression->args)
         {
-            linitial(original_expression->args) = convert_sql_ops_to_gate_ops(linitial(original_expression->args));
-        }
-        else
-        {
-            linitial(original_expression->args) = convert_sql_ops_to_gate_ops(linitial(original_expression->args));
-            lsecond(original_expression->args) = convert_sql_ops_to_gate_ops(lsecond(original_expression->args));
+            lfirst(lc) = convert_sql_ops_to_gate_funcs(lfirst(lc));
         }
 
         FuncExpr *final_expression;
 
         /*
-            Because in the WHERE clause, comparators must produce booleans, I have made the < operator (as in g1 < g2) a comparator, but in fact I want the
-            < operator to turn its arguments into a gate.
+            Because in the WHERE clause, comparators must produce booleans, I have made the < operator (as in g1 < g2) a comparator,
+            but in fact I need the < operator to turn its arguments into a gate.
 
             Hence, the conditional clauses below take the boolean operators, which are the comparators, and transforms them into a FuncExpr
-            where the comparator operator turns into a gate.
+            where the comparator operator is replaced with the corresponding < operator which creates a condition gate.
 
-            The plus/minus/times/divide operators have no issue - they take gates and return gates, so they don't require further processing.
+            The plus/minus/times/divide operators take gates and return gates, so they don't require processing.
         */
         if (original_expression->opno == less_than_comparator)
         {
@@ -739,36 +726,36 @@ static Node *convert_sql_ops_to_gate_ops(Node *node)
         int list_len = list_length(boolExpr->args);
         foreach (lc, boolExpr->args)
         {
-            lfirst(lc) = convert_sql_ops_to_gate_ops(lfirst(lc));
+            lfirst(lc) = convert_sql_ops_to_gate_funcs(lfirst(lc));
         }
 
-        // Convert the bool expr to an opexpr.
-        Expr *result;
+        // Convert the boolean comparator to its gate equivalent.
+        FuncExpr *result;
         if (boolExpr->boolop == AND_EXPR)
         {
-            // Conjoin the first two arguments
-            result = make_opclause(and_gate, gate_oid, false, linitial(boolExpr->args), lsecond(boolExpr->args), InvalidOid, InvalidOid);
+            // Convert the first two args
+            result = makeFuncExpr(and_gate, gate_oid, list_make2(linitial(boolExpr->args), lsecond(boolExpr->args)), InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 
-            // Conjoin the rest.
-            for (int i = 2; i < list_len; ++i)
+            // Then do the rest
+            for_each_from(lc, boolExpr->args, 2)
             {
-                result = make_opclause(and_gate, gate_oid, false, result, list_nth(boolExpr->args, i), InvalidOid, InvalidOid);
+                result = makeFuncExpr(and_gate, gate_oid, list_make2(result, lfirst(lc)), InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
             }
         }
         else if (boolExpr->boolop == OR_EXPR)
         {
-            // Conjoin the first two arguments
-            result = make_opclause(or_gate, gate_oid, false, linitial(boolExpr->args), lsecond(boolExpr->args), InvalidOid, InvalidOid);
+            // Convert the first two args
+            result = makeFuncExpr(or_gate, gate_oid, list_make2(linitial(boolExpr->args), lsecond(boolExpr->args)), InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 
-            // Conjoin the rest.
-            for (int i = 2; i < list_len; ++i)
+            // Then do the rest
+            for_each_from(lc, boolExpr->args, 2)
             {
-                result = make_opclause(or_gate, gate_oid, false, result, list_nth(boolExpr->args, i), InvalidOid, InvalidOid);
+                result = makeFuncExpr(or_gate, gate_oid, list_make2(result, lfirst(lc)), InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
             }
         }
         else if (boolExpr->boolop == NOT_EXPR)
         {
-            result = make_opclause(negate_condition_oid, gate_oid, false, linitial(boolExpr->args), NULL, InvalidOid, InvalidOid);
+            result = makeFuncExpr(negate_condition_oid, gate_oid, boolExpr->args, InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
         }
 
         return castNode(Node, result);
@@ -781,7 +768,8 @@ static Node *convert_sql_ops_to_gate_ops(Node *node)
     else
     {
         // Catchall for unknown node types
-        elog_node_display(ERROR, "Unrecognised node type in convert node to gate", node, true);
+        elog_node_display(INFO, "Unrecognised node type in convert node to gate", node, true);
+        return node;
     }
 }
 
@@ -806,6 +794,7 @@ static void construct_condition_column(Query *query, Node *node)
         cond columns in a list of Vars.
     */
     List *condition_columns = NIL;
+    List *tables_inspected = NIL; // Stores relids of tables
     List *rtable = query->rtable;
     ListCell *lc;
 
@@ -828,13 +817,37 @@ static void construct_condition_column(Query *query, Node *node)
             ++column_index;
             if (strcmp(strVal(lfirst(lc2)), PROBSQL_CONDITION) == 0)
             {
+                // If you have seen this relid before, that means this query
+                // is a self-join. Don't double add this condition column.
+                ListCell *lc3;
+                bool skipTable = false;
+                foreach (lc3, tables_inspected)
+                {
+                    Oid prev_seen_relid = lfirst_oid(lc3);
+
+                    if (prev_seen_relid == rte->relid)
+                    {
+                        skipTable = true;
+                        break;
+                    }
+                }
+
+                if (skipTable)
+                {
+                    break;
+                }
+
                 // Add a Var referencing this column to condition_columns
+                // and add the relid of this table to tables_inspected.
                 // Subqueries not supported.
                 Var *var = makeVar(table_index, column_index, gate_oid, -1, InvalidOid, 0);
                 condition_columns = lappend(condition_columns, var);
+                tables_inspected = lappend_oid(tables_inspected, rte->relid);
             }
         }
     }
+
+    // elog_node_display(INFO, "Condition columns", condition_columns, true);
 
     // Exclude those cond columns in the target list
     List *cells_to_delete = NIL;
@@ -856,6 +869,8 @@ static void construct_condition_column(Query *query, Node *node)
         }
     }
 
+    // elog_node_display(INFO, "Cells to delete", cells_to_delete, true);
+
     int targetEntries_deleted = 0;
     foreach (lc, cells_to_delete)
     {
@@ -870,6 +885,8 @@ static void construct_condition_column(Query *query, Node *node)
         targetEntry->resno = resno;
         ++resno;
     }
+
+    // elog_node_display(INFO, "Final targetList", query->targetList, true);
 
     /*
         Create an Expr to ANDs all those cond columns together with the given node
@@ -913,20 +930,22 @@ static void construct_condition_column(Query *query, Node *node)
         if (node != NULL)
         {
             condition_columns = lappend(condition_columns, node); // Conds are Vars, node is some OpExpr or BoolExpr
-
-            // Perform a right-fold, with SQL's boolean AND as the conjoiner. The reason I don't
-            // do the operator replacement now, is there could be deeply nested operators inside the Exprs
-            // so I might as well do the replacement in one shot later.
-            Expr *result_condition_expr = makeBoolExpr(
-                AND_EXPR,
-                condition_columns,
-                -1);
-            node = castNode(Node, result_condition_expr);
         }
+
+        // Perform a AND, with SQL's boolean AND as the conjoiner. I do the operator replacement in one shot later.
+        Expr *result_condition_expr = makeBoolExpr(
+            AND_EXPR,
+            condition_columns,
+            -1);
+        node = castNode(Node, result_condition_expr);
     }
 
+    // elog_node_display(INFO, "Initial condition column", node, true);
+
     // Replace the SQL boolean comparators with the probabilistic counterparts
-    node = convert_sql_ops_to_gate_ops(node);
+    node = convert_sql_ops_to_gate_funcs(node);
+
+    // elog_node_display(INFO, "Final condition column", node, true);
 
     // Put node in the target list.
     TargetEntry *targetEntry = makeTargetEntry(
@@ -935,16 +954,23 @@ static void construct_condition_column(Query *query, Node *node)
         PROBSQL_CONDITION,
         false);
     query->targetList = lappend(query->targetList, targetEntry);
+
+    elog_node_display(INFO, "Final query", query, true);
 }
 
 // Forward declaration of this extension's planner
 static PlannedStmt *prob_planner(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams)
 {
-    // Strip out all the deterministic checks in the WHERE clause, if any.
-    HasGateWalkerContext *selectContext = handle_select_from_table_with_gate_in_condition(parse);
+    if (parse->commandType == CMD_SELECT && parse->rtable)
+    {
+        elog_node_display(INFO, "Initial query", parse, true);
 
-    // Rewrite the query to generate the new condition column using the context
-    construct_condition_column(parse, selectContext->node); // impl detail: selectContext is always non-null.
+        // Strip out all the deterministic checks in the WHERE clause, if any.
+        HasGateWalkerContext *selectContext = handle_select_from_table_with_gate_in_condition(parse);
+
+        // Rewrite the query to generate the new condition column using the context
+        construct_condition_column(parse, selectContext->node); // impl detail: selectContext is always non-null.
+    }
 
     // Let the previous planner (if it exists) or the standard planner run
     if (prev_planner)
@@ -967,8 +993,6 @@ static void probsql_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
     /*
         If this is a CREATE TABLE, and the attributes contain a GATE, insert a condition attribute also of type GATE
         where each tuple's condition is set to TRUE.
-
-        // Use a manual cond inserter and remover as an escape hatch
     */
     handle_create_table_with_gate(pstmt);
 

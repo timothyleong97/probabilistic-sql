@@ -14,8 +14,17 @@ typedef enum
     PLUS,
     MINUS,
     TIMES,
-    DIVIDE
+    DIVIDE,
+    MAX,
+    MIN,
+    SUM,
+    COUNT
 } probabilistic_composition;
+
+bool is_aggregate_comp(probabilistic_composition pc)
+{
+    return pc == MAX || pc == MIN || pc == SUM || pc == COUNT;
+}
 
 // The types of condition gates that exist.
 typedef enum
@@ -43,4 +52,9 @@ typedef enum
     CONDITION,
     PLACEHOLDER_TRUE // Used for the trivial condition
 } gate_type;
+
+bool is_prob_type(gate_type g)
+{
+    return g == BASE_VARIABLE || g == COMPOSITE_VARIABLE;
+}
 #endif
