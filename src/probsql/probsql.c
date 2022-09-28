@@ -1,8 +1,7 @@
-#include "probsql.h"
+#include <postgres.h>
 #include "stringify.h"
 #include "gate.h"
 
-#include <postgres.h>
 #include <fmgr.h>
 #include <optimizer/planner.h>
 #include <tcop/utility.h>
@@ -44,6 +43,12 @@ static Oid more_than_comparator = InvalidOid;
 static Oid more_than_or_equal_comparator = InvalidOid;
 static Oid equal_comparator = InvalidOid;
 static Oid not_equal_comparator = InvalidOid;
+
+// SQL gate aggregators
+static Oid max_agg = InvalidOid;
+static Oid min_agg = InvalidOid;
+static Oid count_agg = InvalidOid;
+static Oid sum_agg = InvalidOid;
 
 // SQL gate type oid
 static Oid gate_oid = InvalidOid;
@@ -106,10 +111,19 @@ Datum gate_in(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(arithmetic_var);
 Datum arithmetic_var(PG_FUNCTION_ARGS)
 {
+    ereport(INFO, errmsg("Entered arithmetic var"));
     // Read in arguments
+    if (PG_ARGISNULL(0))
+    {
+        ereport(ERROR, errmsg("First argument is null"));
+    }
+    
     Gate *first_operand = (Gate *)PG_GETARG_POINTER(0);
+    // ereport(INFO, errmsg("First operand: %s", _stringify_gate(first_operand)));
     Gate *second_operand = (Gate *)PG_GETARG_POINTER(1);
+    ereport(INFO, errmsg("Second operand: %s", _stringify_gate(second_operand)));
     char *opr = PG_GETARG_CSTRING(2);
+    ereport(INFO, errmsg("Operator: %s", opr));
 
     // Determine the type of composition
     probabilistic_composition comp;
@@ -130,6 +144,22 @@ Datum arithmetic_var(PG_FUNCTION_ARGS)
     {
         comp = DIVIDE;
     }
+    else if (strcmp(opr, "MAX") == 0)
+    {
+        comp = MAX;
+    }
+    else if (strcmp(opr, "MIN") == 0)
+    {
+        comp = MIN;
+    }
+    else if (strcmp(opr, "COUNT") == 0)
+    {
+        comp = COUNT;
+    }
+    else if (strcmp(opr, "SUM") == 0)
+    {
+        comp = SUM;
+    }
     else
     {
         // Catchall for unrecognised operator codes
@@ -140,6 +170,8 @@ Datum arithmetic_var(PG_FUNCTION_ARGS)
 
     // Create the new gate
     Gate *new_gate = combine_prob_gates(first_operand, second_operand, comp);
+    ereport(INFO,
+            errmsg("Created: %s", _stringify_gate(new_gate)));
     PG_RETURN_POINTER(new_gate);
 }
 

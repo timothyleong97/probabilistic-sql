@@ -20,7 +20,8 @@
         "heap.h": "c",
         "pg_operator.h": "c",
         "defrem.h": "c",
-        "parse_node.h": "c"
+        "parse_node.h": "c",
+        "stdbool.h": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }

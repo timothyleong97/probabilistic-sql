@@ -17,13 +17,13 @@ typedef enum
     DIVIDE,
     MAX,
     MIN,
-    SUM,
-    COUNT
+    COUNT,
+    SUM
 } probabilistic_composition;
 
 bool is_aggregate_comp(probabilistic_composition pc)
 {
-    return pc == MAX || pc == MIN || pc == SUM || pc == COUNT;
+    return pc == MAX || pc == MIN || pc == COUNT || pc == SUM;
 }
 
 // The types of condition gates that exist.

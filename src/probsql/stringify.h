@@ -34,7 +34,7 @@ char *stringify_base_variable(base_variable *base_variable)
 }
 
 // Returns (stringified_left)[ opr ](stringified_right)
-char *combine_operands_and_operator(char *stringified_left, char *opr, char *stringified_right)
+char *combine_nonagg_operands_and_operator(char *stringified_left, char *opr, char *stringified_right)
 {
     const int length_of_left_side = strlen(stringified_left);
     const int length_of_opr = strlen(opr);
@@ -53,6 +53,27 @@ char *combine_operands_and_operator(char *stringified_left, char *opr, char *str
 
     arr[length_of_left_side + 2 + length_of_opr] = '(';
     memcpy((void *)arr + length_of_left_side + 3 + length_of_opr, (void *)stringified_right, length_of_right_side);
+    arr[length - 1] = ')';
+    arr[length] = '\0';
+
+    return arr;
+}
+
+// Returns [opr]`(`(left),(right)`)`
+char *combine_aggregate_operands_and_operator(char *opr, char *left, char *right)
+{
+    const int length_of_left = strlen(left);
+    const int length_of_right = strlen(right);
+    const int length_of_opr = strlen(opr);
+    const int length = length_of_opr + length_of_left + length_of_right + 3; // + 3 for the brackets and comma
+
+    char *arr = (char *)palloc(length + 1); // + 1 for the null terminator
+
+    memcpy((void *)arr, (void *)opr, length_of_opr);
+    arr[length_of_opr] = '(';
+    memcpy((void *)arr + length_of_opr + 1, (void *)left, length_of_left);
+    arr[length_of_opr + 1 + length_of_left] = ',';
+    memcpy((void *)arr + length_of_opr + 1 + length_of_left + 1, (void *)right, length_of_right);
     arr[length - 1] = ')';
     arr[length] = '\0';
 
@@ -95,11 +116,11 @@ char *stringify_condition(condition *condition)
     }
 
     /**
-     * A condition (which is not an aggregate) always takes the form <left gate> <opr> <right gate>
+     * A condition always takes the form <left gate> <opr> <right gate>
      */
     char *stringified_left = _stringify_gate(condition->left_gate);
     char *stringified_right = _stringify_gate(condition->right_gate);
-    return combine_operands_and_operator(stringified_left, opr, stringified_right);
+    return combine_nonagg_operands_and_operator(stringified_left, opr, stringified_right);
 }
 
 char *stringify_composite_variable(comp_variable *comp_variable)
@@ -119,16 +140,37 @@ char *stringify_composite_variable(comp_variable *comp_variable)
     case DIVIDE:
         opr = "/";
         break;
+    case MAX:
+        opr = "max";
+        break;
+    case MIN:
+        opr = "min";
+        break;
+    case COUNT:
+        opr = "count";
+        break;
+    case SUM:
+        opr = "sum";
+        break;
     default:
         opr = "UNKNOWN OPR";
     }
 
-    /**
-     *  A composite variable takes the following form: <left gate> <opr> <right_gate>
-     */
     char *stringified_left = _stringify_gate(comp_variable->left_gate);
     char *stringified_right = _stringify_gate(comp_variable->right_gate);
-    return combine_operands_and_operator(stringified_left, opr, stringified_right);
+
+    /**
+     * An aggregate composite variable takes the form: <opr>(<left>,<right>)
+     */
+    if (is_aggregate_comp(comp_variable->opr))
+    {
+        return combine_aggregate_operands_and_operator(opr, stringified_left, stringified_right);
+    }
+
+    /**
+     *  A composite variable (that is not aggregate) takes the following form: <left gate> <opr> <right_gate>
+     */
+    return combine_nonagg_operands_and_operator(stringified_left, opr, stringified_right);
 }
 
 char *_stringify_gate(Gate *gate)

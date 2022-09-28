@@ -99,6 +99,72 @@ CREATE OPERATOR / (
     function = div_prob_var
 );
 
+-- CREATE FUNCTION max_prob_var(g1 gate, g2 gate)
+--     RETURNS gate AS
+--     $$
+--         SELECT arithmetic_var(g1, g2, 'MAX');
+--     $$
+--     LANGUAGE SQL IMMUTABLE STRICT;
+
+-- CREATE AGGREGATE max (gate)
+-- (
+--     sfunc = max_prob_var,
+--     stype = gate
+-- );
+
+-- CREATE FUNCTION min_prob_var(g1 gate, g2 gate)
+--     RETURNS gate AS
+--     $$
+--         SELECT arithmetic_var(g1, g2, 'MIN');
+--     $$
+--     LANGUAGE SQL IMMUTABLE STRICT;
+
+-- CREATE AGGREGATE min (gate)
+-- (
+--     sfunc = min_prob_var,
+--     stype = gate
+-- );
+
+-- CREATE FUNCTION count_prob_var(g1 gate, g2 gate)
+--     RETURNS gate AS
+--     $$
+--         SELECT arithmetic_var(g1, g2, 'COUNT');
+--     $$
+--     LANGUAGE SQL IMMUTABLE STRICT;
+
+-- CREATE AGGREGATE count (gate)
+-- (
+--     sfunc = count_prob_var,
+--     stype = gate
+-- );
+
+CREATE FUNCTION sum_prob_var(_state gate, _value gate)
+    RETURNS gate AS
+    $$
+        SELECT arithmetic_var(_state, _value, 'SUM');
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE AGGREGATE prob_sum (gate)
+(
+    sfunc = sum_prob_var,
+    stype = gate,
+    initcond = '0'
+);
+
+
+CREATE FUNCTION sum_nums(_state numeric, _value numeric)
+    RETURNS numeric AS
+    $$
+        SELECT _state + 2 * _value;
+    $$
+    LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE AGGREGATE sum_num (numeric) (
+    sfunc = sum_nums,
+    stype = numeric
+);
+
 -- Define conditioning functions for the now-defined gate
 CREATE FUNCTION return_true(gate, gate) -- for WHERE CLAUSE
     RETURNS boolean AS

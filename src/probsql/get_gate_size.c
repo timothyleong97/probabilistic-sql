@@ -1,4 +1,5 @@
 // Use this file to get the size of Gate, when it changes
+#include <stdbool.h>
 #include "structs.h"
 #include <stdio.h>
 
